@@ -49,7 +49,7 @@ train_config:
     noobj_loss_w: 0.1
     class_loss_w: 1.0
   shuffle_samples: true
-  batch_size: 5
+  batch_size: 64
   lr: 0.001
   use_lr_scheduler: true
   lr_scheduler_config:
