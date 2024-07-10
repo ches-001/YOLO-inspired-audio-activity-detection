@@ -1,3 +1,5 @@
+import warnings
+warnings.filterwarnings(action="ignore")
 import os
 import yaml
 import json

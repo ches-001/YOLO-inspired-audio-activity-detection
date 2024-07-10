@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from typing import Tuple, Optional, Dict
 
 class AudioDetectionLoss(nn.Module):
@@ -45,6 +46,10 @@ class AudioDetectionLoss(nn.Module):
         loss_dict["obj_loss"] = (sm_loss_dict["obj_loss"] + md_loss_dict["obj_loss"] + lg_loss_dict["obj_loss"]) / 3
         loss_dict["noobj_loss"] = (sm_loss_dict["noobj_loss"] + md_loss_dict["noobj_loss"] + lg_loss_dict["noobj_loss"]) / 3
         loss_dict["class_loss"] = (sm_loss_dict["class_loss"] + md_loss_dict["class_loss"] + lg_loss_dict["class_loss"]) / 3
+        loss_dict["accuracy"] = (sm_loss_dict["accuracy"] + md_loss_dict["accuracy"] + lg_loss_dict["accuracy"]) / 3
+        loss_dict["f1"] = (sm_loss_dict["f1"] + md_loss_dict["f1"] + lg_loss_dict["f1"]) / 3
+        loss_dict["precision"] = (sm_loss_dict["precision"] + md_loss_dict["precision"] + lg_loss_dict["precision"]) / 3
+        loss_dict["recall"] = (sm_loss_dict["recall"] + md_loss_dict["recall"] + lg_loss_dict["recall"]) / 3
         return loss, loss_dict
 
 
@@ -90,6 +95,18 @@ class AudioDetectionLoss(nn.Module):
         if class_loss != class_loss: # if class_loss is NaN:
              class_loss = torch.tensor(0.0, dtype=pred_probs.dtype, device=pred_probs.device)
 
+        # accuracy, precision, recall
+        pred_labels = pred_probs[target_classes != self.ignore_index].detach().argmax(dim=-1).cpu().numpy()
+        target_labels = target_classes[target_classes != self.ignore_index].cpu().numpy()
+        print(pred_labels.shape, target_labels.shape)
+        if pred_labels.shape[0] != 0:
+            accuracy = accuracy_score(target_labels, pred_labels)
+            f1 = f1_score(target_labels, pred_labels, average="macro")
+            precision = precision_score(target_labels, pred_labels, average="macro")    
+            recall = recall_score(target_labels, pred_labels, average="macro")
+        else:
+             accuracy, f1, precision, recall = [1] * 4
+
         # aggregate losses
         loss = (
              (self.segment_loss_w * segment_loss) + 
@@ -102,6 +119,10 @@ class AudioDetectionLoss(nn.Module):
         loss_dict["obj_loss"] = obj_loss.item()
         loss_dict["noobj_loss"] = noobj_loss.item()
         loss_dict["class_loss"] = class_loss.item()
+        loss_dict["accuracy"] = accuracy
+        loss_dict["f1"] = f1
+        loss_dict["precision"] = precision
+        loss_dict["recall"] = recall  
         return loss, loss_dict
 
     @staticmethod

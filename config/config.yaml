@@ -65,6 +65,6 @@ train_config:
   optimizer: "Adam"
   ignore_index: -100
   verbose: True
-  annotation_file_path: "dataset/annotations/RMLE_mapping.json"
+  annotation_file_path: "dataset/annotations/MD_mapping.json"
   annotator: "annotator_a"
 audio_extension: "wav"
