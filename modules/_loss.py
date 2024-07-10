@@ -20,7 +20,7 @@ class AudioDetectionLoss(nn.Module):
         self.noobj_loss_w = noobj_loss_w
         self.class_loss_w = class_loss_w
         self.ignore_index = ignore_index
-        self.bce_loss_fn = nn.BCELoss(reduction="sum")
+        self.bce_loss_fn = nn.BCELoss(reduction="none")
         self.ce_loss_fn = nn.CrossEntropyLoss(
             weight=class_weights, ignore_index=ignore_index, reduction="mean"
         )
@@ -78,11 +78,13 @@ class AudioDetectionLoss(nn.Module):
         _mask = torch.ones_like(segment_loss, device=segment_loss.device)
         _mask[target_objectness.squeeze(-1) == 0] = 0
         segment_loss = segment_loss * _mask
-        segment_loss = segment_loss.sum()
+        segment_loss = segment_loss.sum(dim=1).mean()
 
         # confidence / objectness loss
         obj_loss = self.bce_loss_fn(target_objectness * best_preds[..., :1], targets[..., :1])
         noobj_loss = self.bce_loss_fn((1 - target_objectness) * (1 - best_preds[..., :1]), (1 - targets[..., :1]))
+        obj_loss = obj_loss.sum(dim=(1, 2)).mean()
+        noobj_loss = noobj_loss.sum(dim=(1, 2)).mean()
 
         # class loss
         class_mask = (1 - target_objectness) * self.ignore_index
