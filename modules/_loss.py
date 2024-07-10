@@ -79,8 +79,9 @@ class AudioDetectionLoss(nn.Module):
         _mask = torch.ones_like(segment_loss, device=segment_loss.device)
         _mask[target_objectness.squeeze(-1) == 0] = 0
         segment_loss = segment_loss * _mask
+        segment_loss = segment_loss.sum(dim=1).mean()
         # segment_loss = self.mse_loss_fn((target_objectness*pred_segments), (target_objectness*target_segments))
-        segment_loss = segment_loss.sum(dim=(1, 2)).mean()
+        # segment_loss = segment_loss.sum(dim=(1, 2)).mean()
 
         # confidence / objectness loss
         bce_loss = self.bce_loss_fn(best_preds[..., :1], targets[..., :1])
