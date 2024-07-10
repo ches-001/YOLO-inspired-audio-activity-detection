@@ -44,9 +44,9 @@ taper_window: hann
 train_config:
   scale_segments: false
   loss_weights:
-    segment_loss_w: 5.0
+    segment_loss_w: 1.0
     obj_loss_w: 1.0
-    noobj_loss_w: 0.1
+    noobj_loss_w: 0.05
     class_loss_w: 1.0
   shuffle_samples: true
   batch_size: 64

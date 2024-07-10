@@ -5,7 +5,7 @@ from typing import Tuple, Optional, Dict
 class AudioDetectionLoss(nn.Module):
     def __init__(
         self, 
-        segment_loss_w: float=5.0,
+        segment_loss_w: float=1.0,
         obj_loss_w: float=1.0,
         noobj_loss_w: float=0.1,
         class_loss_w: float=1.0,
@@ -81,10 +81,9 @@ class AudioDetectionLoss(nn.Module):
         noobj_loss = noobj_loss.sum(dim=(1, 2)).mean()
 
         # class loss
-        class_mask = (1 - target_objectness) * self.ignore_index
         pred_probs = best_preds[..., 1:-2].flatten(0, -2)
-        target_classes = class_mask * targets[..., 1:2]
-        target_classes = torch.clip(target_classes, min=self.ignore_index)
+        target_classes = targets[..., 1:2].clone()
+        target_classes[target_objectness == 0] = self.ignore_index
         target_classes = target_classes.flatten(0, -1).to(device=targets.device, dtype=torch.int64)
         class_loss = self.ce_loss_fn(pred_probs, target_classes)
         if class_loss != class_loss: # if class_loss is NaN:
