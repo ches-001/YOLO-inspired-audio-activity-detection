@@ -112,9 +112,9 @@ class AudioDetectionNetwork(nn.Module):
         md_stride = x_spectral.shape[-1] // md_scale.shape[1]
         lg_stride = x_spectral.shape[-1] // lg_scale.shape[1]
         center_scaler = x_spectral.shape[-1] / (x.shape[-1] / self.config["new_sample_rate"])
-        sm_1dgrid = self.get_segment_coords(num_sm_segments).unsqueeze(-1)
-        md_1dgrid = self.get_segment_coords(num_md_segments).unsqueeze(-1)
-        lg_1dgrid = self.get_segment_coords(num_lg_segments).unsqueeze(-1)
+        sm_1dgrid = self.get_segment_coords(num_sm_segments, device=x.device).unsqueeze(-1)
+        md_1dgrid = self.get_segment_coords(num_md_segments, device=x.device).unsqueeze(-1)
+        lg_1dgrid = self.get_segment_coords(num_lg_segments, device=x.device).unsqueeze(-1)
         sm_center = ((torch.sigmoid(sm_scale[..., -2:-1]) + sm_1dgrid) * sm_stride) / center_scaler
         md_center = ((torch.sigmoid(md_scale[..., -2:-1]) + md_1dgrid) * md_stride) / center_scaler
         lg_center = ((torch.sigmoid(lg_scale[..., -2:-1]) + lg_1dgrid) * lg_stride) / center_scaler
@@ -135,9 +135,9 @@ class AudioDetectionNetwork(nn.Module):
         preds = torch.cat((sm_preds, md_preds, lg_preds), dim=-1)
         return preds
 
-    def get_segment_coords(self, w: int) -> torch.Tensor:
+    def get_segment_coords(self, w: int, device: Union[str, torch.device, int]) -> torch.Tensor:
         xcoords = torch.arange(0, w)
-        return xcoords[:, None]
+        return xcoords[:, None].to(device=device)
 
     def init_zeros_taper_window(self, taper_window: torch.Tensor):
         self.taper_window = torch.zeros_like(taper_window)
