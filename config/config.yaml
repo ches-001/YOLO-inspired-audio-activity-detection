@@ -54,11 +54,11 @@ train_config:
   use_lr_scheduler: true
   lr_scheduler_config:
     name: "CosineAnnealingWarmRestarts"
-    T_0: 10
+    T_0: 40
     T_mult: 2
     eta_min: 0.00001
   weight_decay: 0.00005
-  epochs: 30
+  epochs: 120
   device: "cuda"
   model_path: "saved_model"
   metrics_path: "metrics"
