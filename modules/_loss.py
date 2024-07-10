@@ -70,7 +70,16 @@ class AudioDetectionLoss(nn.Module):
         # segment center and duration loss
         pred_segments = best_preds[..., -2:] / self.scale_t
         target_segments = targets[..., -2:] / self.scale_t
-        segment_loss = self.mse_loss_fn((target_objectness*pred_segments), (target_objectness*target_segments))
+        segment_loss = AudioDetectionLoss.compute_ciou_loss(
+             target_objectness * pred_segments, 
+             target_objectness * target_segments
+        )
+        # ciou losses of 0s preds and 0s targets is 1, hence we ought to make the
+        # ciou losses where objectness is 0 to be equal to 0
+        _mask = torch.ones_like(segment_loss, device=segment_loss.device)
+        _mask[target_objectness.squeeze(-1) == 0] = 0
+        segment_loss = segment_loss * _mask
+        # segment_loss = self.mse_loss_fn((target_objectness*pred_segments), (target_objectness*target_segments))
         segment_loss = segment_loss.sum(dim=(1, 2)).mean()
 
         # confidence / objectness loss

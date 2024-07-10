@@ -57,7 +57,7 @@ class TrainerPipeline:
         valid_modes = self._valid_modes
         if mode not in valid_modes:
             raise ValueError(f"mode must be one of {valid_modes}, got {mode}")
-        df = pd.DataFrame(getattr(self, f"_{mode}_metrics_dict"))
+        df = pd.DataFrame(getattr(self, f"_{mode}_metrics"))
         fig, axs = plt.subplots(len(df.columns), 1, figsize=figsize)
         
         for i, col in enumerate(df.columns):
