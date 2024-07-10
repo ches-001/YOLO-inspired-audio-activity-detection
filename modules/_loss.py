@@ -24,7 +24,6 @@ class AudioDetectionLoss(nn.Module):
         self.ce_loss_fn = nn.CrossEntropyLoss(
             weight=class_weights, ignore_index=ignore_index, reduction="mean"
         )
-        self.mse_loss_fn = nn.MSELoss(reduction="none")
         self.scale_t = scale_t if scale_t else 1
 
     def forward(
@@ -70,18 +69,10 @@ class AudioDetectionLoss(nn.Module):
         # segment center and duration loss
         pred_segments = best_preds[..., -2:] / self.scale_t
         target_segments = targets[..., -2:] / self.scale_t
-        segment_loss = AudioDetectionLoss.compute_ciou_loss(
-             target_objectness * pred_segments, 
-             target_objectness * target_segments
+        segment_loss = torch.nn.functional.mse_loss(
+             (target_objectness*pred_segments), (target_objectness*target_segments), reduction="none"
         )
-        # ciou losses of 0s preds and 0s targets is 1, hence we ought to make the
-        # ciou losses where objectness is 0 to be equal to 0
-        _mask = torch.ones_like(segment_loss, device=segment_loss.device)
-        _mask[target_objectness.squeeze(-1) == 0] = 0
-        segment_loss = segment_loss * _mask
-        segment_loss = segment_loss.sum(dim=1).mean()
-        # segment_loss = self.mse_loss_fn((target_objectness*pred_segments), (target_objectness*target_segments))
-        # segment_loss = segment_loss.sum(dim=(1, 2)).mean()
+        segment_loss = segment_loss.sum(dim=(1, 2)).mean()
 
         # confidence / objectness loss
         bce_loss = self.bce_loss_fn(best_preds[..., :1], targets[..., :1])
@@ -129,24 +120,3 @@ class AudioDetectionLoss(nn.Module):
         union = union + e
         iou = intersection / union
         return iou
-
-    @staticmethod
-    def compute_ciou_loss(
-        preds_cw: torch.Tensor, 
-        targets_cw: torch.Tensor, 
-        e: float=1e-15) -> torch.Tensor:
-
-        assert (preds_cw.ndim == targets_cw.ndim)
-        distance_1d = lambda x1, x2 : torch.abs(x1 - x2)
-        if targets_cw.ndim != preds_cw.ndim:
-             targets_cw = targets_cw.unsqueeze(dim=-2)
-        preds_w, targets_w = preds_cw[..., 1], targets_cw[..., 1]
-        preds_c, targets_c = preds_cw[..., 0], targets_cw[..., 0]
-        preds_x1, targets_x1 = preds_c - (preds_w / 2), targets_c - (targets_w / 2)
-        preds_x2, targets_x2 = preds_c + (preds_w / 2), targets_c + (targets_w / 2)
-        iou = AudioDetectionLoss.compute_iou(preds_cw, targets_cw, e=e)
-        v = 4 / torch.pi**2 * (torch.arctan(targets_w) - torch.arctan(preds_w)).pow(2)
-        a = v / ((1 - iou) + v + e)
-        c = distance_1d(torch.min(preds_x1, targets_x1), torch.max(preds_x2, targets_x2))
-        ciou_loss = 1 - (iou - (distance_1d(preds_c, targets_c) / (c**2 + e) + (a * v)))
-        return ciou_loss

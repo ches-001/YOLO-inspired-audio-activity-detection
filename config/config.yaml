@@ -47,9 +47,9 @@ train_config:
     segment_loss_w: 5.0
     obj_loss_w: 1.0
     noobj_loss_w: 0.05
-    class_loss_w: 1.0
+    class_loss_w: 5.0
   shuffle_samples: true
-  batch_size: 64
+  batch_size: 32
   lr: 0.001
   use_lr_scheduler: true
   lr_scheduler_config:
