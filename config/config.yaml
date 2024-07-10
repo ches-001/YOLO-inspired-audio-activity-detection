@@ -1,0 +1,70 @@
+anchors:
+  lg:
+  - 37.85852941176471
+  - 47.85697674418604
+  - 59.575435483871104
+  md:
+  - 16.464165067178502
+  - 22.95941348973607
+  - 29.77285198555957
+  sm:
+  - 2.038795925791206
+  - 5.8258238172920045
+  - 10.737919293820932
+dropout: 0.2
+melspectrogram_config:
+  center: false
+  hop_length: 2000
+  mel_scale: htk
+  n_fft: 2000
+  n_mels: 32
+  norm: slaney
+  pad_mode: reflect
+  power: 2
+  win_length: null
+mfcc_config:
+  melkwargs:
+    center: false
+    hop_length: 2000
+    mel_scale: htk
+    n_fft: 2000
+    n_mels: 32
+    norm: slaney
+    pad_mode: reflect
+    power: 2
+    win_length: null
+  n_mfcc: 32
+new_sample_rate: 16000
+normalize: true
+num_anchors: 3
+sample_rate: 22050
+sample_duration: 60
+taper_input: true
+taper_window: hann
+train_config:
+  scale_segments: true
+  loss_weights:
+    segment_loss_w: 5.0
+    obj_loss_w: 1.0
+    noobj_loss_w: 0.1
+    class_loss_w: 1.0
+  shuffle_samples: true
+  batch_size: 5
+  lr: 0.001
+  use_lr_scheduler: true
+  lr_scheduler_config:
+    name: "CosineAnnealingWarmRestarts"
+    T_0: 10
+    T_mult: 2
+    eta_min: 0.00001
+  weight_decay: 0.00005
+  epochs: 30
+  device: "cuda"
+  model_path: "saved_model"
+  metrics_path: "metrics"
+  optimizer: "Adam"
+  ignore_index: -100
+  verbose: True
+  annotation_file_path: "dataset/annotations/RMLE_mapping.json"
+  annotator: "annotator_a"
+audio_extension: "wav"

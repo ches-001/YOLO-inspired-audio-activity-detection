@@ -1,0 +1,14 @@
+.env
+env.env
+venv
+model_predictions
+dataset/shards_data
+dataset/data
+dataset/train
+dataset/eval
+dataset/test
+notebook_outputs
+saved_model
+**/__pycache__
+kaggle.json
+notebook.ipynb
