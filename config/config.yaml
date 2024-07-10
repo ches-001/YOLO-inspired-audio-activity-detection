@@ -1,16 +1,17 @@
 anchors:
   lg:
-  - 37.85852941176471
-  - 47.85697674418604
-  - 59.575435483871104
+  - 43.1931055900621
+  - 50.995572519083964
+  - 59.81746359223294
   md:
-  - 16.464165067178502
-  - 22.95941348973607
-  - 29.77285198555957
+  - 19.55103626943005
+  - 27.203208722741433
+  - 35.17562231759656
   sm:
-  - 2.038795925791206
-  - 5.8258238172920045
-  - 10.737919293820932
+  - 2.650371318822021
+  - 7.444496919917864
+  - 12.86779279279279
+audio_extension: wav
 dropout: 0.2
 melspectrogram_config:
   center: false
@@ -37,34 +38,33 @@ mfcc_config:
 new_sample_rate: 16000
 normalize: true
 num_anchors: 3
-sample_rate: 22050
 sample_duration: 60
+sample_rate: 22050
 taper_input: true
 taper_window: hann
 train_config:
-  scale_segments: true
-  loss_weights:
-    segment_loss_w: 5.0
-    obj_loss_w: 1.0
-    noobj_loss_w: 0.05
-    class_loss_w: 5.0
-  shuffle_samples: true
+  annotation_file_path: dataset/annotations/MD_mapping.json
+  annotator: annotator_a
   batch_size: 32
+  device: cuda
+  epochs: 60
+  ignore_index: -100
+  loss_weights:
+    class_loss_w: 5.0
+    noobj_loss_w: 0.05
+    obj_loss_w: 1.0
+    segment_loss_w: 5.0
   lr: 0.001
-  use_lr_scheduler: true
   lr_scheduler_config:
-    name: "CosineAnnealingWarmRestarts"
     T_0: 20
     T_mult: 2
-    eta_min: 0.00001
-  weight_decay: 0.00005
-  epochs: 60
-  device: "cuda"
-  model_path: "saved_model"
-  metrics_path: "metrics"
-  optimizer: "Adam"
-  ignore_index: -100
-  verbose: True
-  annotation_file_path: "dataset/annotations/MD_mapping.json"
-  annotator: "annotator_a"
-audio_extension: "wav"
+    eta_min: 1.0e-05
+    name: CosineAnnealingWarmRestarts
+  metrics_path: metrics
+  model_path: saved_model
+  optimizer: Adam
+  scale_segments: true
+  shuffle_samples: true
+  use_lr_scheduler: true
+  verbose: true
+  weight_decay: 5.0e-05
