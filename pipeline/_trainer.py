@@ -110,7 +110,8 @@ class TrainerPipeline:
 
         getattr(self, f"_{mode}_metrics").append(metrics)
         if verbose:
-            "[" + mode.title() + "]: " + "\t".join([f"{k.replace('_', ' ')}: {v :.4f}" for k, v in metrics.items()])
+            log = "[" + mode.title() + "]: " + "\t".join([f"{k.replace('_', ' ')}: {v :.4f}" for k, v in metrics.items()])
+            print(log)
         return metrics
     
     def metrics_to_csv(self):
