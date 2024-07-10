@@ -98,7 +98,6 @@ class AudioDetectionLoss(nn.Module):
         # accuracy, precision, recall
         pred_labels = pred_probs[target_classes != self.ignore_index].detach().argmax(dim=-1).cpu().numpy()
         target_labels = target_classes[target_classes != self.ignore_index].cpu().numpy()
-        print(pred_labels.shape, target_labels.shape)
         if pred_labels.shape[0] != 0:
             accuracy = accuracy_score(target_labels, pred_labels)
             f1 = f1_score(target_labels, pred_labels, average="macro")
