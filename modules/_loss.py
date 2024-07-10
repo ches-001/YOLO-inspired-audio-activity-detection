@@ -104,7 +104,7 @@ class AudioDetectionLoss(nn.Module):
             precision = precision_score(target_labels, pred_labels, average="macro")    
             recall = recall_score(target_labels, pred_labels, average="macro")
         else:
-             accuracy, f1, precision, recall = [1] * 4
+             accuracy, f1, precision, recall = [0] * 4
 
         # aggregate losses
         loss = (
