@@ -138,6 +138,10 @@ class AudioDataset(Dataset):
             lg_cellidx = torch.ceil((lg_segments[:, 1] / num_cells) - 1).to(dtype=torch.int64)
             lg_bsegments[lg_cellidx, 0] = 1
             lg_bsegments[lg_cellidx, 1:] = lg_segments
+
+        sm_bsegments[sm_bsegments[..., 1] == self.ignore_index, 0] = 0
+        md_bsegments[md_bsegments[..., 1] == self.ignore_index, 0] = 0
+        lg_bsegments[lg_bsegments[..., 1] == self.ignore_index, 0] = 0
         return sm_bsegments, md_bsegments, lg_bsegments
 
 

@@ -42,7 +42,7 @@ sample_duration: 60
 taper_input: true
 taper_window: hann
 train_config:
-  scale_segments: true
+  scale_segments: false
   loss_weights:
     segment_loss_w: 5.0
     obj_loss_w: 1.0
