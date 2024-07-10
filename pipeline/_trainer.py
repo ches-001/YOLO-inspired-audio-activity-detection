@@ -108,10 +108,9 @@ class TrainerPipeline:
                 if key not in metrics.keys(): metrics[key] = (batch_metrics[key] / total)
                 else: metrics[key] += (batch_metrics[key] / total)
 
-        getattr(self, f"_{_mode}_metrics").append(metrics)
-        _mode = mode.title()
+        getattr(self, f"_{mode}_metrics").append(metrics)
         if verbose:
-            "\t".join([f"{k.replace('_', ' ')}: {v :.4f}" for k, v in metrics.items()])
+            "[" + mode.title() + "]: " + "\t".join([f"{k.replace('_', ' ')}: {v :.4f}" for k, v in metrics.items()])
         return metrics
     
     def metrics_to_csv(self):
