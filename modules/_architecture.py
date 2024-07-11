@@ -150,6 +150,9 @@ class AudioDetectionNetwork(nn.Module):
     
     @staticmethod
     def scale_input(x: torch.Tensor, e: float=1e-8) -> torch.Tensor:
-        _max = x.max(dim=-1).values.max(dim=-1).values.max(dim=-1).values[:, None, None, None]
-        _min = x.min(dim=-1).values.min(dim=-1).values.min(dim=-1).values[:, None, None, None]
-        return (x - _min) / ((_max - _min) + e)
+        # _max = x.max(dim=-1).values.max(dim=-1).values.max(dim=-1).values[:, None, None, None]
+        # _min = x.min(dim=-1).values.min(dim=-1).values.min(dim=-1).values[:, None, None, None]
+        # return (x - _min) / ((_max - _min) + e)
+        mu = x.mean(dim=(-2, -1))[:, :, None, None]
+        std = x.std(dim=(-2, -1))[:, :, None, None]
+        return (x - mu) / (std + e)
