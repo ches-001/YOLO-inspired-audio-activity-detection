@@ -58,6 +58,13 @@ class AudioDetectionLoss(nn.Module):
         # sm_pred: (S x 3 x (3 + C))     sm_target: (S, 4)
         ious_per_anchors = AudioDetectionLoss.compute_iou(preds[..., -2:], targets[..., -2:])
         ious_max, best_anchoridx = torch.max(ious_per_anchors, dim=-1)
+
+        noobj_pred_mask = torch.ones_like(preds[..., 0], dtype=torch.bool)
+        noobj_pred_mask = noobj_pred_mask.scatter(2, best_anchoridx.unsqueeze(-1), False)
+        noobj_preds = preds[noobj_pred_mask].reshape(*preds.shape[:2], 2, -1)
+
+        # target objectness scores (1 if object, 0 if no object)
+        target_objectness = targets[..., :1]
         best_anchoridx = best_anchoridx.unsqueeze(-1).unsqueeze(-1)
         if preds.ndim == 4:
              best_anchoridx = best_anchoridx.expand(*preds.shape[0:2], -1, preds.shape[-1])
@@ -67,9 +74,6 @@ class AudioDetectionLoss(nn.Module):
              best_anchoridx = best_anchoridx.expand(preds.shape[0], -1, preds.shape[-1])
              best_preds = torch.gather(preds, dim=1, index=best_anchoridx)
              best_preds = best_preds.squeeze(dim=1)
-        
-        # target objectness scores (1 if object, 0 if no object)
-        target_objectness = targets[..., :1]
 
         # segment center and duration loss
         pred_segments = best_preds[..., -2:] / self.scale_t
@@ -79,12 +83,15 @@ class AudioDetectionLoss(nn.Module):
         segment_loss = segment_loss.sum(dim=(1, 2)).mean()
 
         # confidence / objectness loss
-        # conf_loss = torch.nn.functional.binary_cross_entropy(best_preds[..., :1], targets[..., :1], reduction="none")
-        conf_loss = torch.nn.functional.mse_loss(best_preds[..., :1], targets[..., :1], reduction="none")
-        obj_loss = target_objectness * conf_loss
-        noobj_loss = (1 - target_objectness) * conf_loss
+        noobj_objectness = noobj_preds[..., :1]
+        noobj_target_objectness = torch.zeros_like(noobj_objectness, dtype=noobj_preds.dtype, device=noobj_preds.device)
+        objnoobj_loss = torch.nn.functional.mse_loss(best_preds[..., :1], targets[..., :1], reduction="none")
+        noobj_loss1 = torch.nn.functional.mse_loss(noobj_objectness, noobj_target_objectness, reduction="none")
+        noobj_loss2 = (1 - target_objectness) * objnoobj_loss
+        noobj_loss = torch.cat([noobj_loss1, noobj_loss2.unsqueeze(-2)], dim=-2)
+        noobj_loss = noobj_loss.sum(dim=(1, 2, 3)).mean()
+        obj_loss = target_objectness * objnoobj_loss
         obj_loss = obj_loss.sum(dim=(1, 2)).mean()
-        noobj_loss = noobj_loss.sum(dim=(1, 2)).mean()
 
         # class loss
         pred_probs = best_preds[..., 1:-2].flatten(0, -2)
@@ -104,7 +111,7 @@ class AudioDetectionLoss(nn.Module):
             precision = precision_score(target_labels, pred_labels, average="macro")    
             recall = recall_score(target_labels, pred_labels, average="macro")
         else:
-             accuracy, f1, precision, recall = [0] * 4
+             accuracy, f1, precision, recall = [1] * 4
 
         # aggregate losses
         loss = (
