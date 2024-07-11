@@ -75,9 +75,9 @@ class AudioDetectionNetwork(nn.Module):
         mel_spectrogram = self.power_to_db_tfmr(mel_spectrogram)
         mfcc = self.power_to_db_tfmr(mfcc)
 
-        if self.config["normalize"]:
-            mel_spectrogram = AudioDetectionNetwork.normalize(mel_spectrogram)
-            mfcc = AudioDetectionNetwork.normalize(mfcc)
+        if self.config["scale_input"]:
+            mel_spectrogram = AudioDetectionNetwork.scale_input(mel_spectrogram)
+            mfcc = AudioDetectionNetwork.scale_input(mfcc)
             
         # spectro-temporal input goes to 2d conv network
         # The spectral input is created by concatinating the mel-spectrogram with the MFCC
@@ -149,7 +149,7 @@ class AudioDetectionNetwork(nn.Module):
                 m.bias.data.fill_(0.01)
     
     @staticmethod
-    def normalize(x: torch.Tensor, e: float=1e-8) -> torch.Tensor:
-        mu = x.mean(dim=(-2, -1))[:, :, None, None]
-        std = x.std(dim=(-2, -1))[:, :, None, None]
-        return (x - mu) / (std + e)
+    def scale_input(x: torch.Tensor, e: float=1e-8) -> torch.Tensor:
+        _max = x.max(dim=-1).values.max(dim=-1).values.max(dim=-1).values[:, None, None, None]
+        _min = x.min(dim=-1).values.min(dim=-1).values.min(dim=-1).values[:, None, None, None]
+        return (x - _min) / ((_max - _min) + e)

@@ -36,7 +36,7 @@ mfcc_config:
     win_length: null
   n_mfcc: 32
 new_sample_rate: 16000
-normalize: true
+scale_input: true
 num_anchors: 3
 sample_duration: 60
 sample_rate: 22050
