@@ -51,7 +51,7 @@ train_config:
   ignore_index: -100
   loss_weights:
     class_loss_w: 5.0
-    noobj_loss_w: 0.05
+    noobj_loss_w: 1.0
     obj_loss_w: 1.0
     segment_loss_w: 5.0
   lr: 0.001
