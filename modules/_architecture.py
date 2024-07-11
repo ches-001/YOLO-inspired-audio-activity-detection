@@ -132,7 +132,7 @@ class AudioDetectionNetwork(nn.Module):
         sm_preds = sm_preds.reshape(batch_size, -1, self.num_classes+3)
         md_preds = md_preds.reshape(batch_size, -1, self.num_classes+3)
         lg_preds = lg_preds.reshape(batch_size, -1, self.num_classes+3)
-        preds = torch.cat((sm_preds, md_preds, lg_preds), dim=-1)
+        preds = torch.cat((sm_preds, md_preds, lg_preds), dim=1).flatten(start_dim=1, end_dim=-2)
         return preds
 
     def get_segment_coords(self, w: int, device: Union[str, torch.device, int]) -> torch.Tensor:
