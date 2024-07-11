@@ -25,7 +25,7 @@ class ExtractorLayer(nn.Module):
         self._layer = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=(3, 7), stride=(1, w_stride), padding=(1, 7//2)),
             nn.BatchNorm2d(32),
-            nn.GELU(),
+            nn.ReLU(),
             nn.Conv2d(32, out, kernel_size=(3, 7), stride=(h_stride, 1), padding=(1, 7//2)),
             nn.BatchNorm2d(out),
             nn.Dropout(dropout),
@@ -95,8 +95,8 @@ class BackBone(nn.Module):
         self.first_conv = nn.Sequential(
             nn.Conv2d(self.in_channels, 64, kernel_size=(7, 7), stride=1, padding=7//2),
             nn.BatchNorm2d(64),
-            nn.GELU()
         )
+        self.instance_norm = nn.InstanceNorm2d(64)
         self.entry_block = ExtractorBlock(64, 64, 2, dropout=dropout)
         self.block1 = ExtractorBlock(64, 128, self.block_config[0], dropout=dropout)
         self.block2 = ExtractorBlock(128, 256, self.block_config[1], dropout=dropout)
@@ -106,6 +106,7 @@ class BackBone(nn.Module):
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         x = self.first_conv(x)
         x = self.entry_block(x)
+        x = self.instance_norm(x)
         fmap1 = self.block1(x)
         fmap2 = self.block2(fmap1)
         fmap3 = self.block3(fmap2)
