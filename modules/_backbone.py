@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+from torchvision.models import resnet
+from torchvision.models.resnet import ResNet, BasicBlock, Bottleneck
 from typing import *
 
 
@@ -78,18 +80,18 @@ class ExtractorBlock(nn.Module):
         
     
 
-class BackBone(nn.Module):
+class CustomBackBone(nn.Module):
     def __init__(
             self, 
             in_channels: int, 
             dropout: float=0.0, 
-            block_config=None
+            block_layers: Optional[Iterable[int]]=None
         ):
-        super(BackBone, self).__init__()
+        super(CustomBackBone, self).__init__()
         
         self.in_channels = in_channels
-        self.block_config = [3, 4, 6, 3] if (not block_config) else block_config
-        if len(self.block_config) != 4:
+        self.block_layers = block_layers or [3, 4, 6, 3]
+        if len(self.block_layers) != 4:
             raise ValueError("block config must be a list of length = 4")
         
         self.first_conv = nn.Sequential(
@@ -98,10 +100,11 @@ class BackBone(nn.Module):
             nn.GELU()
         )
         self.entry_block = ExtractorBlock(64, 64, 2, dropout=dropout)
-        self.block1 = ExtractorBlock(64, 128, self.block_config[0], dropout=dropout)
-        self.block2 = ExtractorBlock(128, 256, self.block_config[1], dropout=dropout)
-        self.block3 = ExtractorBlock(256, 512, self.block_config[2], dropout=dropout)
-        self.block4 = ExtractorBlock(512, 1024, self.block_config[3], dropout=dropout)
+        self.block1 = ExtractorBlock(64, 128, self.block_layers[0], dropout=dropout)
+        self.block2 = ExtractorBlock(128, 256, self.block_layers[1], dropout=dropout)
+        self.block3 = ExtractorBlock(256, 512, self.block_layers[2], dropout=dropout)
+        self.block4 = ExtractorBlock(512, 1024, self.block_layers[3], dropout=dropout)
+        self.fmap1_ch, self.fmap2_ch, self.fmap3_ch, self.fmap4_ch = [128, 256, 512, 1024]
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         x = self.first_conv(x)
@@ -110,4 +113,40 @@ class BackBone(nn.Module):
         fmap2 = self.block2(fmap1)
         fmap3 = self.block3(fmap2)
         fmap4 = self.block4(fmap3)
+        return fmap1, fmap2, fmap3, fmap4
+    
+
+class ResNetBackBone(ResNet):
+    def __init__(
+        self, 
+        in_channels: int, 
+        dropout: float=0.0, 
+        block: Union[str, Type]=BasicBlock, 
+        block_layers: Optional[Iterable[int]]=None
+    ):
+        if isinstance(block, str):
+            block = getattr(resnet, block)
+        super(ResNetBackBone, self).__init__(block=block, layers=block_layers or [3, 4, 6, 3])
+        self.in_channels = in_channels  
+        self.conv1 = nn.Conv2d(self.in_channels, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        self.conv2 = nn.Conv2d(64, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        self.dropout = nn.Dropout(dropout)
+
+        if block == BasicBlock:
+            self.fmap1_ch, self.fmap2_ch, self.fmap3_ch, self.fmap4_ch = [64, 128, 256, 512]
+        elif block == Bottleneck:
+            self.fmap1_ch, self.fmap2_ch, self.fmap3_ch, self.fmap4_ch = [256, 512, 1024, 2048]
+        #delete unwanted layers
+        del self.maxpool, self.fc, self.avgpool
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.dropout(x)
+        fmap1 = self.layer1(x)
+        fmap2 = self.layer2(fmap1)
+        fmap3 = self.layer3(fmap2)
+        fmap4 = self.layer4(fmap3)
         return fmap1, fmap2, fmap3, fmap4

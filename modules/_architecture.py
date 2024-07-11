@@ -2,7 +2,8 @@ import yaml
 import torch
 import torchaudio
 import torch.nn as nn
-from ._backbone import BackBone
+from torchvision.models import resnet
+from ._backbone import CustomBackBone, ResNetBackBone
 from ._common import MultiScaleFmapModule
 from typing import *
 
@@ -41,12 +42,26 @@ class AudioDetectionNetwork(nn.Module):
         self.md_anchors = nn.Parameter(torch.FloatTensor(self.config["anchors"]["md"]), requires_grad=True)
         self.lg_anchors = nn.Parameter(torch.FloatTensor(self.config["anchors"]["lg"]), requires_grad=True)
 
-        self.feature_extractor = BackBone(2, dropout=self.config["dropout"])
+        if self.config["backbone"] == "custom":
+            self.feature_extractor = CustomBackBone(
+                2, 
+                dropout=self.config["dropout"], 
+                block_layers=self.config["block_layers"]
+            )
+        elif self.config["backbone"] == "resnet":
+            self.feature_extractor = ResNetBackBone(
+                2, 
+                dropout=self.config["dropout"], 
+                block_layers=self.config["block_layers"],
+                **self.config["resnet_config"]
+            )
+        else:
+            raise Exception("Unkown backbone type")
         self.multiscale_module = MultiScaleFmapModule(
-            self.feature_extractor.block1.out_channels, 
-            self.feature_extractor.block2.out_channels, 
-            self.feature_extractor.block3.out_channels, 
-            self.feature_extractor.block4.out_channels, 
+            self.feature_extractor.fmap1_ch,
+            self.feature_extractor.fmap2_ch,
+            self.feature_extractor.fmap3_ch,
+            self.feature_extractor.fmap4_ch,
             out_channels=self.out_channels
         )
         self.apply(self.xavier_init_weights)

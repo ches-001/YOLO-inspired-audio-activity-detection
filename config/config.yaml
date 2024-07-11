@@ -42,21 +42,25 @@ sample_duration: 60
 sample_rate: 22050
 taper_input: true
 taper_window: hann
+backbone: "resnet"
+block_layers: [3, 4, 6, 4]
+resnet_config:
+  block: "BasicBlock"
 train_config:
   annotation_file_path: dataset/annotations/MD_mapping.json
   annotator: annotator_a
   batch_size: 32
   device: cuda
-  epochs: 60
+  epochs: 90
   ignore_index: -100
   loss_weights:
     class_loss_w: 5.0
-    noobj_loss_w: 0.1
-    obj_loss_w: 1.0
+    noobj_loss_w: 0.2
+    obj_loss_w: 5.0
     segment_loss_w: 5.0
   lr: 0.001
   lr_scheduler_config:
-    T_0: 20
+    T_0: 30
     T_mult: 2
     eta_min: 1.0e-05
     name: CosineAnnealingWarmRestarts
@@ -65,6 +69,6 @@ train_config:
   optimizer: Adam
   scale_segments: true
   shuffle_samples: true
-  use_lr_scheduler: false
+  use_lr_scheduler: True
   verbose: true
   weight_decay: 5.0e-05

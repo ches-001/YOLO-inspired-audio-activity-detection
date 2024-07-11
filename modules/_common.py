@@ -108,7 +108,6 @@ class MultiScaleFmapModule(nn.Module):
         super(MultiScaleFmapModule, self).__init__()
 
         c_h = 64
-        self.avg_pool = nn.AvgPool2d(kernel_size=(frequency_dim, 1), stride=(1, 1))
         self.cspsppf = CSPSPPFModule(fmap4_channels, c_h)
         self.bic2 = BiCModule(fmap2_channels, fmap1_channels, c_h, c_h)
         self.bic3 = BiCModule(fmap3_channels, fmap2_channels, c_h, c_h)
@@ -128,10 +127,10 @@ class MultiScaleFmapModule(nn.Module):
         fmap4: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         
-        fmap1 = self.avg_pool(fmap1)
-        fmap2 = self.avg_pool(fmap2)
-        fmap3 = self.avg_pool(fmap3)
-        fmap4 = self.avg_pool(fmap4)
+        fmap1 = nn.functional.adaptive_avg_pool2d(fmap1, output_size=(1, fmap1.shape[-1]))
+        fmap2 = nn.functional.adaptive_avg_pool2d(fmap2, output_size=(1, fmap2.shape[-1]))
+        fmap3 = nn.functional.adaptive_avg_pool2d(fmap3, output_size=(1, fmap3.shape[-1]))
+        fmap4 = nn.functional.adaptive_avg_pool2d(fmap4, output_size=(1, fmap4.shape[-1]))
         p4 = self.cspsppf(fmap4)
         p3 = self.rep_block3_1(self.bic3(fmap3, fmap2, p4))
         p2 = self.rep_block2_1(self.bic2(fmap2, fmap1, p3))
