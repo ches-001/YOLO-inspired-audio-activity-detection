@@ -21,7 +21,6 @@ class AudioDetectionLoss(nn.Module):
         self.noobj_loss_w = noobj_loss_w
         self.class_loss_w = class_loss_w
         self.ignore_index = ignore_index
-        self.bce_loss_fn = nn.BCELoss(reduction="none")
         self.ce_loss_fn = nn.CrossEntropyLoss(
             weight=class_weights, ignore_index=ignore_index, reduction="mean"
         )
@@ -75,15 +74,15 @@ class AudioDetectionLoss(nn.Module):
         # segment center and duration loss
         pred_segments = best_preds[..., -2:] / self.scale_t
         target_segments = targets[..., -2:] / self.scale_t
-        segment_loss = torch.nn.functional.mse_loss(
-             (target_objectness*pred_segments), (target_objectness*target_segments), reduction="none"
-        )
+        segment_loss = torch.nn.functional.mse_loss(pred_segments, target_segments, reduction="none")
+        segment_loss = target_objectness * segment_loss
         segment_loss = segment_loss.sum(dim=(1, 2)).mean()
 
         # confidence / objectness loss
-        bce_loss = self.bce_loss_fn(best_preds[..., :1], targets[..., :1])
-        obj_loss = target_objectness * bce_loss
-        noobj_loss = (1 - target_objectness) * bce_loss
+        # conf_loss = torch.nn.functional.binary_cross_entropy(best_preds[..., :1], targets[..., :1], reduction="none")
+        conf_loss = torch.nn.functional.mse_loss(best_preds[..., :1], targets[..., :1], reduction="none")
+        obj_loss = target_objectness * conf_loss
+        noobj_loss = (1 - target_objectness) * conf_loss
         obj_loss = obj_loss.sum(dim=(1, 2)).mean()
         noobj_loss = noobj_loss.mean()
 
