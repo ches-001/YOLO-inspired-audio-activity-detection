@@ -84,7 +84,7 @@ class AudioDetectionLoss(nn.Module):
         obj_loss = target_objectness * conf_loss
         noobj_loss = (1 - target_objectness) * conf_loss
         obj_loss = obj_loss.sum(dim=(1, 2)).mean()
-        noobj_loss = noobj_loss.mean()
+        noobj_loss = noobj_loss.sum(dim=(1, 2)).mean()
 
         # class loss
         pred_probs = best_preds[..., 1:-2].flatten(0, -2)
