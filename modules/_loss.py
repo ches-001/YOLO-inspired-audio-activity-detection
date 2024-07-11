@@ -43,6 +43,7 @@ class AudioDetectionLoss(nn.Module):
         loss_dict = {}
         loss_dict["aggregate_loss"] = loss.item()
         loss_dict["segment_loss"] = (sm_loss_dict["segment_loss"] + md_loss_dict["segment_loss"] + lg_loss_dict["segment_loss"]) / 3
+        loss_dict["mean_iou"] = (sm_loss_dict["mean_iou"] + md_loss_dict["mean_iou"] + lg_loss_dict["mean_iou"]) / 3
         loss_dict["obj_loss"] = (sm_loss_dict["obj_loss"] + md_loss_dict["obj_loss"] + lg_loss_dict["obj_loss"]) / 3
         loss_dict["noobj_loss"] = (sm_loss_dict["noobj_loss"] + md_loss_dict["noobj_loss"] + lg_loss_dict["noobj_loss"]) / 3
         loss_dict["class_loss"] = (sm_loss_dict["class_loss"] + md_loss_dict["class_loss"] + lg_loss_dict["class_loss"]) / 3
@@ -116,6 +117,7 @@ class AudioDetectionLoss(nn.Module):
         loss_dict = {}
         loss_dict["segment_loss"] = segment_loss.item()
         loss_dict["obj_loss"] = obj_loss.item()
+        loss_dict["mean_iou"] = ious_max.mean().cpu().item()
         loss_dict["noobj_loss"] = noobj_loss.item()
         loss_dict["class_loss"] = class_loss.item()
         loss_dict["accuracy"] = accuracy
