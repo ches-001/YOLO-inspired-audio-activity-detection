@@ -98,9 +98,9 @@ class AudioDetectionNetwork(nn.Module):
         lg_scale = lg_scale.reshape(batch_size, num_lg_segments, num_lg_anchors, -1)
 
         # first index corresponds to objectness of each box
-        sm_objectness = sm_scale[..., :1].sigmoid()
-        md_objectness = md_scale[..., :1].sigmoid()
-        lg_objectness = lg_scale[..., :1].sigmoid()
+        sm_objectness = torch.clip(sm_scale[..., :1], min=0.0, max=1.0)
+        md_objectness = torch.clip(md_scale[..., :1], min=0.0, max=1.0)
+        lg_objectness = torch.clip(lg_scale[..., :1], min=0.0, max=1.0)
 
         # next `num_class` indexes correspond to class probabilities of each bbox
         sm_class_proba = nn.functional.softmax(sm_scale[..., 1:1+self.num_classes], dim=-1)
