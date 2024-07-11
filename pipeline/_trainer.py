@@ -49,11 +49,11 @@ class TrainerPipeline:
         saved_params = torch.load(self.saved_model_path, map_location=self.device)
         return self.model.load_state_dict(saved_params["network_params"])
         
-    def save_metrics_plots(self, figsize: Tuple[float, float]=(15, 50)):
+    def save_metrics_plots(self, figsize: Tuple[float, float]=(17, 60)):
         self.__save_metrics_plots("train", figsize)
         self.__save_metrics_plots("eval", figsize)
 
-    def __save_metrics_plots(self, mode: str, figsize: Tuple[float, float]=(15, 50)):        
+    def __save_metrics_plots(self, mode: str, figsize: Tuple[float, float]=(17, 60)):        
         valid_modes = self._valid_modes
         if mode not in valid_modes:
             raise ValueError(f"mode must be one of {valid_modes}, got {mode}")

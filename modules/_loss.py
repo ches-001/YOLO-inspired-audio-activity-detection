@@ -117,7 +117,7 @@ class AudioDetectionLoss(nn.Module):
         loss_dict = {}
         loss_dict["segment_loss"] = segment_loss.item()
         loss_dict["obj_loss"] = obj_loss.item()
-        loss_dict["mean_iou"] = ious_max.mean().cpu().item()
+        loss_dict["mean_iou"] = ious_max.unsqueeze(-1)[target_objectness == 1].mean().cpu().item()
         loss_dict["noobj_loss"] = noobj_loss.item()
         loss_dict["class_loss"] = class_loss.item()
         loss_dict["accuracy"] = accuracy
