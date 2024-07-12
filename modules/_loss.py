@@ -12,6 +12,7 @@ class AudioDetectionLoss(nn.Module):
         class_loss_w: float=1.0,
         ignore_index: int=-100, 
         class_weights: Optional[torch.Tensor]=None,
+        label_smoothing: float=0,
         scale_t: Optional[int]=None,
     ):
         assert isinstance(ignore_index, int) and ignore_index < 0, "ignore_index must be an integer less than zero"
@@ -22,7 +23,7 @@ class AudioDetectionLoss(nn.Module):
         self.class_loss_w = class_loss_w
         self.ignore_index = ignore_index
         self.ce_loss_fn = nn.CrossEntropyLoss(
-            weight=class_weights, ignore_index=ignore_index, reduction="mean"
+            weight=class_weights, ignore_index=ignore_index, reduction="mean", label_smoothing=label_smoothing
         )
         self.scale_t = scale_t if scale_t else 1
 
@@ -85,8 +86,12 @@ class AudioDetectionLoss(nn.Module):
         # confidence / objectness loss
         noobj_objectness = noobj_preds[..., :1]
         noobj_target_objectness = torch.zeros_like(noobj_objectness, dtype=noobj_preds.dtype, device=noobj_preds.device)
-        objnoobj_loss = torch.nn.functional.binary_cross_entropy(best_preds[..., :1], targets[..., :1], reduction="none")
-        noobj_loss1 = torch.nn.functional.binary_cross_entropy(noobj_objectness, noobj_target_objectness, reduction="none")
+        objnoobj_loss = torch.nn.functional.binary_cross_entropy_with_logits(
+            best_preds[..., :1], targets[..., :1], reduction="none"
+        )
+        noobj_loss1 = torch.nn.functional.binary_cross_entropy_with_logits(
+            noobj_objectness, noobj_target_objectness, reduction="none"
+        )
         noobj_loss2 = (1 - target_objectness) * objnoobj_loss
         noobj_loss = torch.cat([noobj_loss1, noobj_loss2.unsqueeze(-2)], dim=-2)
         noobj_loss = noobj_loss.sum(dim=(1, 2, 3)).mean()
@@ -148,7 +153,7 @@ class AudioDetectionLoss(nn.Module):
         preds_x2, targets_x2 = preds_c + (preds_w / 2), targets_c + (targets_w / 2)
         intersection = torch.min(preds_x2, targets_x2) - torch.max(preds_x1, targets_x1)
         intersection = torch.clip(intersection, min=0)
-        union = torch.max(preds_x2, targets_x2) - torch.min(preds_x1, targets_x1)
+        union = ((preds_x2 - preds_x1) + (targets_x2 - targets_x1)) - intersection
         union = union + e
         iou = intersection / union
         return iou

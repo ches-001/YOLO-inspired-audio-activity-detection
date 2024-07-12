@@ -53,6 +53,7 @@ train_config:
   device: cuda
   epochs: 90
   ignore_index: -100
+  label_smoothing: 0
   loss_weights:
     class_loss_w: 5.0
     noobj_loss_w: 0.05
