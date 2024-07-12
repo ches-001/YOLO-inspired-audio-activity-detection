@@ -43,7 +43,7 @@ sample_rate: 22050
 taper_input: true
 taper_window: hann
 backbone: "custom"
-block_layers: [3, 4, 6, 4]
+block_layers: [3, 4, 6, 3]
 resnet_config:
   block: "BasicBlock"
 train_config:
@@ -56,9 +56,14 @@ train_config:
   loss_weights:
     class_loss_w: 5.0
     noobj_loss_w: 0.05
-    obj_loss_w: 2.0
-    segment_loss_w: 5.0
-  lr: 0.001
+    obj_loss_w: 5.0
+    segment_loss_w: 1.0
+  optimizer_config:
+    lr: 0.001
+    weight_decay: 5.0e-04
+    beta: [0.9, 0.999]
+    eps: 0.00000001
+    name: Adam
   lr_scheduler_config:
     T_0: 30
     T_mult: 2
@@ -66,9 +71,7 @@ train_config:
     name: CosineAnnealingWarmRestarts
   metrics_path: metrics
   model_path: saved_model
-  optimizer: Adam
   scale_segments: true
   shuffle_samples: true
   use_lr_scheduler: true
   verbose: true
-  weight_decay: 5.0e-04

@@ -13,7 +13,7 @@ from modules import AudioDetectionNetwork, AudioDetectionLoss
 from pipeline import TrainerPipeline
 from typing import *
 
-SEED = 42
+SEED = 3047
 CONFIG_PATH = "config/config.yaml"
 TRAIN_DATA_PATH = "dataset/train"
 EVAL_DATA_PATH = "dataset/eval"
@@ -79,21 +79,22 @@ def make_loss_fn(config: Dict[str, Any], class_weights: torch.Tensor) -> AudioDe
     return loss_fn
 
 def make_optimizer(model: AudioDetectionNetwork, config: Dict[str, Any]) -> torch.optim.Optimizer:
-    return getattr(torch.optim, config["train_config"]["optimizer"])(
-        model.parameters(), 
-        lr=config["train_config"]["lr"], 
-        weight_decay=config["train_config"]["lr"]
+    config = config.copy()
+    optimizer_name = config["train_config"]["optimizer_config"].pop("name")
+    optimizer = getattr(torch.optim, optimizer_name)(
+        model.parameters(), **config["train_config"]["optimizer_config"]
     )
+    return optimizer
 
 def make_lr_scheduler(optimizer: torch.optim.Optimizer, config: Dict[str, Any]) -> torch.optim.lr_scheduler.LRScheduler:
+    config = config.copy()
     scheduler_name = config["train_config"]["lr_scheduler_config"].pop("name")
     lr_scheduler = getattr(torch.optim.lr_scheduler, scheduler_name)(
         optimizer, **config["train_config"]["lr_scheduler_config"]
     )
     return lr_scheduler
 
-def run():
-    config = load_config()
+def run(config: Dict[str, Any]):
     device = config["train_config"]["device"] if torch.cuda.is_available() else "cpu"
     annotations = load_annotations(config["train_config"]["annotation_file_path"])
     annotator = config["train_config"]["annotator"]
@@ -145,4 +146,5 @@ def run():
 
 if __name__ == "__main__":
     # torch.autograd.set_detect_anomaly(True)
-    run()
+    config = load_config()
+    run(config)
