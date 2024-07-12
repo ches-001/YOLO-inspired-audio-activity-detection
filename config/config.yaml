@@ -61,7 +61,7 @@ train_config:
   optimizer_config:
     lr: 0.001
     weight_decay: 5.0e-04
-    beta: [0.9, 0.999]
+    betas: [0.5, 0.999]
     eps: 0.00000001
     name: Adam
   lr_scheduler_config:
