@@ -69,6 +69,6 @@ train_config:
   optimizer: Adam
   scale_segments: true
   shuffle_samples: true
-  use_lr_scheduler: True
+  use_lr_scheduler: true
   verbose: true
   weight_decay: 5.0e-04
