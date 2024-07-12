@@ -12,7 +12,7 @@ anchors:
   - 7.444496919917864
   - 12.86779279279279
 audio_extension: wav
-dropout: 0.2
+dropout: 0.3
 melspectrogram_config:
   center: false
   hop_length: 2000
@@ -42,7 +42,7 @@ sample_duration: 60
 sample_rate: 22050
 taper_input: true
 taper_window: hann
-backbone: "resnet"
+backbone: "custom"
 block_layers: [3, 4, 6, 4]
 resnet_config:
   block: "BasicBlock"
@@ -55,8 +55,8 @@ train_config:
   ignore_index: -100
   loss_weights:
     class_loss_w: 5.0
-    noobj_loss_w: 0.2
-    obj_loss_w: 5.0
+    noobj_loss_w: 0.05
+    obj_loss_w: 2.0
     segment_loss_w: 5.0
   lr: 0.001
   lr_scheduler_config:
@@ -71,4 +71,4 @@ train_config:
   shuffle_samples: true
   use_lr_scheduler: True
   verbose: true
-  weight_decay: 5.0e-05
+  weight_decay: 5.0e-04
