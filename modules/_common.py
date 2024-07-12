@@ -103,7 +103,6 @@ class MultiScaleFmapModule(nn.Module):
         fmap3_channels: int,
         fmap4_channels: int,
         out_channels: int,
-        frequency_dim: int=32
     ):
         super(MultiScaleFmapModule, self).__init__()
 

@@ -135,8 +135,8 @@ class AudioDetectionNetwork(nn.Module):
         lg_center = ((torch.sigmoid(lg_scale[..., -2:-1]) + lg_1dgrid) * lg_stride) / center_scaler
 
         # last index of last dimension corresponds to segment duration / width
-        sm_width = torch.exp(sm_scale[..., -1:]) * self.sm_anchors.unsqueeze(-1).clip(max=self.config["sample_duration"])
-        md_width = torch.exp(md_scale[..., -1:]) * self.md_anchors.unsqueeze(-1).clip(max=self.config["sample_duration"])
+        sm_width = (torch.exp(sm_scale[..., -1:]) * self.sm_anchors.unsqueeze(-1)).clip(max=self.config["sample_duration"])
+        md_width = (torch.exp(md_scale[..., -1:]) * self.md_anchors.unsqueeze(-1)).clip(max=self.config["sample_duration"])
         lg_width = (torch.exp(lg_scale[..., -1:]) * self.lg_anchors.unsqueeze(-1)).clip(max=self.config["sample_duration"])
 
         sm_preds = torch.cat((sm_objectness, sm_class_proba, sm_center, sm_width), dim=-1)
