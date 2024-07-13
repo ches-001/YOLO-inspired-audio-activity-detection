@@ -143,7 +143,7 @@ class AudioDetectionLoss(nn.Module):
 
     @staticmethod
     def compute_iou(preds_cw: torch.Tensor, targets_cw: torch.Tensor, e: float=1e-15) -> torch.Tensor:
-        # preds_cw: (S x 3 x 2)     targets_cw: (S x 2) | (S x 3 x 2)
+        # preds_cw: (S x 3 x 2)     targets_cw: (S x 2) | (S x 1 x 2)
         assert (preds_cw.ndim == targets_cw.ndim + 1) or (preds_cw.ndim == targets_cw.ndim)
         if targets_cw.ndim != preds_cw.ndim:
                 targets_cw = targets_cw.unsqueeze(dim=-2)
