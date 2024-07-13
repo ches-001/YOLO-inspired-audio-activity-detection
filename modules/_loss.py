@@ -13,6 +13,7 @@ class AudioDetectionLoss(nn.Module):
         ignore_index: int=-100, 
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
+        iou_confidence: bool=False,
         scale_t: Optional[int]=None,
     ):
         assert isinstance(ignore_index, int) and ignore_index < 0, "ignore_index must be an integer less than zero"
@@ -22,6 +23,7 @@ class AudioDetectionLoss(nn.Module):
         self.noobj_loss_w = noobj_loss_w
         self.class_loss_w = class_loss_w
         self.ignore_index = ignore_index
+        self.iou_confidence = iou_confidence
         self.ce_loss_fn = nn.CrossEntropyLoss(
             weight=class_weights, ignore_index=ignore_index, reduction="mean", label_smoothing=label_smoothing
         )
@@ -85,9 +87,17 @@ class AudioDetectionLoss(nn.Module):
 
         # confidence / objectness loss
         noobj_objectness = noobj_preds[..., :1]
+        target_confidence = targets[..., :1]
         noobj_target_objectness = torch.zeros_like(noobj_objectness, dtype=noobj_preds.dtype, device=noobj_preds.device)
+        # target confidence can either be 1 where an audio segment is present and 0s where
+        # no audio segment is, or (1 x IoU) where an audio segment is present and (0 x IoU)
+        # where no audio segment is. For the latter, the model would essentally aim to predict
+        # Its IoU to the target as its confidence, this can also theoretically make for a good
+        # regularisation technique, akin to label smoothening.
+        if self.iou_confidence:
+             target_confidence = target_confidence * ious_max.unsqueeze(-1)
         objnoobj_loss = torch.nn.functional.binary_cross_entropy(
-            best_preds[..., :1], targets[..., :1], reduction="none"
+            best_preds[..., :1], target_confidence, reduction="none"
         )
         noobj_loss1 = torch.nn.functional.binary_cross_entropy(
             noobj_objectness, noobj_target_objectness, reduction="none"
@@ -99,16 +109,25 @@ class AudioDetectionLoss(nn.Module):
         obj_loss = obj_loss.sum(dim=(1, 2)).mean()
 
         # class loss
-        pred_probs = best_preds[..., 1:-2].flatten(0, -2)
+        best_pred_proba = best_preds[..., 1:-2].flatten(0, -2)
+        all_pred_proba = preds[..., 1:-2].flatten(0, -2)
         target_classes = targets[..., 1:2].clone()
         target_classes[target_objectness == 0] = self.ignore_index
+        # despite the fact that only one of the 3 anchor boxes can be valid, we still need the model to have
+        # the same set of class probability scores per cell regardless of the number of boxes being predicted
+        # by that cell. As such we tile the target class labels from shape (N, ncells, 1) to (N, ncells, 3)
+        # and compare across the 3 boundary predictions of the model (N, ncells, 3, num_classes) then squeeze
+        # both to correspond to shapes (N x ncells x 3) and (N x ncells x 3, num_classes) respectively for
+        # cross entropy
+        tiled_target_classes = target_classes.tile(1, 1, preds.shape[-2])
         target_classes = target_classes.flatten(0, -1).to(device=targets.device, dtype=torch.int64)
-        class_loss = self.ce_loss_fn(pred_probs, target_classes)
+        tiled_target_classes = tiled_target_classes.flatten(0, -1).to(device=targets.device, dtype=torch.int64)
+        class_loss = self.ce_loss_fn(all_pred_proba, tiled_target_classes)
         if class_loss != class_loss: # if class_loss is NaN:
-             class_loss = torch.tensor(0.0, dtype=pred_probs.dtype, device=pred_probs.device)
+             class_loss = torch.tensor(0.0, dtype=best_pred_proba.dtype, device=best_pred_proba.device)
 
         # accuracy, precision, recall
-        pred_labels = pred_probs[target_classes != self.ignore_index].detach().argmax(dim=-1).cpu().numpy()
+        pred_labels = best_pred_proba[target_classes != self.ignore_index].detach().argmax(dim=-1).cpu().numpy()
         target_labels = target_classes[target_classes != self.ignore_index].cpu().numpy()
         if pred_labels.shape[0] != 0:
             accuracy = accuracy_score(target_labels, pred_labels)

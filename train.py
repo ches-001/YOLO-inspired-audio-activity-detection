@@ -74,6 +74,7 @@ def make_loss_fn(config: Dict[str, Any], class_weights: torch.Tensor) -> AudioDe
         class_weights=class_weights,
         scale_t=scale_t,
         ignore_index=config["train_config"]["ignore_index"],
+        iou_confidence=config["train_config"]["iou_confidence"],
         **config["train_config"]["loss_weights"]
     )
     return loss_fn
