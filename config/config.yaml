@@ -53,14 +53,14 @@ train_config:
   device: cuda
   epochs: 50
   ignore_index: -100
-  label_smoothing: 0.1
+  label_smoothing: 0.0
   iou_confidence: true
-  ignore_conf_threhold: 0
+  ignore_conf_threhold: 0.5
   loss_weights:
     class_loss_w: 5.0
-    noobj_loss_w: 0.05
-    obj_loss_w: 5.0
-    segment_loss_w: 1.0
+    noobj_loss_w: 0.5
+    obj_loss_w: 10.0
+    segment_loss_w: 5.0
   optimizer_config:
     lr: 0.001
     weight_decay: 5.0e-04
