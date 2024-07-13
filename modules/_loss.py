@@ -13,6 +13,7 @@ class AudioDetectionLoss(nn.Module):
         ignore_index: int=-100, 
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
+        ignore_conf_threhold: float=0,
         iou_confidence: bool=False,
         scale_t: Optional[int]=None,
     ):
@@ -24,6 +25,7 @@ class AudioDetectionLoss(nn.Module):
         self.class_loss_w = class_loss_w
         self.ignore_index = ignore_index
         self.iou_confidence = iou_confidence
+        self.ignore_conf_threhold = ignore_conf_threhold
         self.ce_loss_fn = nn.CrossEntropyLoss(
             weight=class_weights, ignore_index=ignore_index, reduction="mean", label_smoothing=label_smoothing
         )
@@ -86,9 +88,12 @@ class AudioDetectionLoss(nn.Module):
         segment_loss = segment_loss.sum(dim=(1, 2)).mean()
 
         # confidence / objectness loss
-        noobj_objectness = noobj_preds[..., :1]
+        noobj_pred_objectness = noobj_preds[..., :1]
         target_confidence = targets[..., :1]
-        noobj_target_objectness = torch.zeros_like(noobj_objectness, dtype=noobj_preds.dtype, device=noobj_preds.device)
+        best_preds_confidence = best_preds[..., :1]
+        noobj_target_objectness = torch.zeros_like(
+             noobj_pred_objectness, dtype=noobj_preds.dtype, device=noobj_preds.device
+        )
         # target confidence can either be 1 where an audio segment is present and 0s where
         # no audio segment is, or (1 x IoU) where an audio segment is present and (0 x IoU)
         # where no audio segment is. For the latter, the model would essentally aim to predict
@@ -97,12 +102,23 @@ class AudioDetectionLoss(nn.Module):
         if self.iou_confidence:
              target_confidence = target_confidence * ious_max.unsqueeze(-1)
         objnoobj_loss = torch.nn.functional.binary_cross_entropy(
-            best_preds[..., :1], target_confidence, reduction="none"
+            best_preds_confidence, target_confidence, reduction="none"
         )
         noobj_loss1 = torch.nn.functional.binary_cross_entropy(
-            noobj_objectness, noobj_target_objectness, reduction="none"
+            noobj_pred_objectness, noobj_target_objectness, reduction="none"
         )
         noobj_loss2 = (1 - target_objectness) * objnoobj_loss
+        _device, _dtype = best_preds_confidence.device, best_preds_confidence.dtype
+        
+        # zero out the noobj losses where predicted confidence is less than `ignore_conf_threhold` 
+        # (like 0.5) and penalize the rest
+        _mask1 = torch.ones_like(noobj_pred_objectness, dtype=_dtype, device=_device)
+        _mask1[noobj_pred_objectness < self.ignore_conf_threhold] = 0
+        noobj_loss1 = _mask1 * noobj_loss1
+        _mask2 = torch.ones_like(best_preds_confidence, dtype=_dtype, device=_device)
+        _mask2[best_preds_confidence < self.ignore_conf_threhold] = 0
+        noobj_loss2 = _mask2 * noobj_loss2
+
         noobj_loss = torch.cat([noobj_loss1, noobj_loss2.unsqueeze(-2)], dim=-2)
         noobj_loss = noobj_loss.sum(dim=(1, 2, 3)).mean()
         obj_loss = target_objectness * objnoobj_loss
