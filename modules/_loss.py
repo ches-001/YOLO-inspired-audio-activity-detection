@@ -86,10 +86,10 @@ class AudioDetectionLoss(nn.Module):
         # confidence / objectness loss
         noobj_objectness = noobj_preds[..., :1]
         noobj_target_objectness = torch.zeros_like(noobj_objectness, dtype=noobj_preds.dtype, device=noobj_preds.device)
-        objnoobj_loss = torch.nn.functional.binary_cross_entropy_with_logits(
+        objnoobj_loss = torch.nn.functional.binary_cross_entropy(
             best_preds[..., :1], targets[..., :1], reduction="none"
         )
-        noobj_loss1 = torch.nn.functional.binary_cross_entropy_with_logits(
+        noobj_loss1 = torch.nn.functional.binary_cross_entropy(
             noobj_objectness, noobj_target_objectness, reduction="none"
         )
         noobj_loss2 = (1 - target_objectness) * objnoobj_loss
