@@ -29,7 +29,7 @@ def set_config_anchors(sm_anchors: np.ndarray, md_anchors: np.ndarray, lg_anchor
     f.close()
 
 if __name__ == "__main__":
-    annotations_path = "dataset/annotations/RMLE_mapping.json"
+    annotations_path = "dataset/annotations/MD_mapping.json"
     annotator = "annotator_a"
     init = "k-means++"
     n_init = "auto"

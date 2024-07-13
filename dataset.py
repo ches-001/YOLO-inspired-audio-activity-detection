@@ -16,7 +16,7 @@ class AudioDataset(Dataset):
             annotations: Dict[str, Any], 
             anchors_dict: Dict[str, Iterable[float]],
             sample_duration: int=60,
-            num_sm_segments: int=60,
+            num_sm_segments: int=120,
             sample_rate: int=22_050,
             extension: str="wav",
             ignore_index: int=-100,

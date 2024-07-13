@@ -1,6 +1,6 @@
 anchors:
   lg:
-  - 43.1931055900621
+  - 43.19310559006211
   - 50.995572519083964
   - 59.81746359223294
   md:
@@ -15,9 +15,9 @@ audio_extension: wav
 dropout: 0.3
 melspectrogram_config:
   center: false
-  hop_length: 2000
+  hop_length: 1000
   mel_scale: htk
-  n_fft: 2000
+  n_fft: 1000
   n_mels: 32
   norm: slaney
   pad_mode: reflect
@@ -26,9 +26,9 @@ melspectrogram_config:
 mfcc_config:
   melkwargs:
     center: false
-    hop_length: 2000
+    hop_length: 1000
     mel_scale: htk
-    n_fft: 2000
+    n_fft: 1000
     n_mels: 32
     norm: slaney
     pad_mode: reflect
@@ -38,7 +38,7 @@ mfcc_config:
 new_sample_rate: 16000
 scale_input: true
 num_anchors: 3
-sample_duration: 60
+sample_duration: 120
 sample_rate: 22050
 taper_input: true
 taper_window: hann
