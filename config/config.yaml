@@ -11,8 +11,9 @@ anchors:
   - 2.650371318822021
   - 7.444496919917864
   - 12.86779279279279
+sample_rate: 22050
+new_sample_rate: 16000
 audio_extension: wav
-dropout: 0.3
 melspectrogram_config:
   center: false
   hop_length: 1000
@@ -35,15 +36,14 @@ mfcc_config:
     power: 2
     win_length: null
   n_mfcc: 32
-new_sample_rate: 16000
 scale_input: true
 num_anchors: 3
-sample_duration: 120
-sample_rate: 22050
+sample_duration: 60
 taper_input: true
 taper_window: hann
 backbone: "custom"
 block_layers: [3, 4, 6, 3]
+dropout: 0.3
 resnet_config:
   block: "BasicBlock"
 train_config:
