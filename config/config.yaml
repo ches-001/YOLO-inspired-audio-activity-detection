@@ -51,10 +51,10 @@ train_config:
   annotator: annotator_a
   batch_size: 32
   device: cuda
-  epochs: 90
+  epochs: 50
   ignore_index: -100
-  label_smoothing: 0
-  iou_confidence: false
+  label_smoothing: 0.1
+  iou_confidence: true
   loss_weights:
     class_loss_w: 5.0
     noobj_loss_w: 0.05
@@ -67,8 +67,8 @@ train_config:
     eps: 0.00000001
     name: Adam
   lr_scheduler_config:
-    T_0: 30
-    T_mult: 2
+    T_0: 50
+    T_mult: 1
     eta_min: 1.0e-05
     name: CosineAnnealingWarmRestarts
   metrics_path: metrics
