@@ -49,7 +49,7 @@ def make_dataset(path: str, config: Dict[str, Any], annotations: Dict[str, Any])
         num_sm_segments=num_sm_segments,
         sample_rate=config["sample_rate"],
         extension=config["audio_extension"],
-        ignore_index=config["train_config"]["ignore_index"]
+        ignore_index=config["train_config"]["loss_config"]["ignore_index"]
     )
     return AudioDataset(path, **kwargs)
 
@@ -73,10 +73,7 @@ def make_loss_fn(config: Dict[str, Any], class_weights: torch.Tensor) -> AudioDe
     loss_fn = AudioDetectionLoss(
         class_weights=class_weights,
         scale_t=scale_t,
-        ignore_index=config["train_config"]["ignore_index"],
-        iou_confidence=config["train_config"]["iou_confidence"],
-        ignore_conf_threhold=config["train_config"]["ignore_conf_threhold"],
-        **config["train_config"]["loss_weights"]
+        **config["train_config"]["loss_config"]
     )
     return loss_fn
 

@@ -10,6 +10,9 @@ class AudioDetectionLoss(nn.Module):
         obj_loss_w: float=1.0,
         noobj_loss_w: float=0.1,
         class_loss_w: float=1.0,
+        sm_loss_w: float=.0,
+        md_loss_w: float=1.0,
+        lg_loss_w: float=1.0,
         ignore_index: int=-100, 
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
@@ -19,6 +22,9 @@ class AudioDetectionLoss(nn.Module):
     ):
         assert isinstance(ignore_index, int) and ignore_index < 0, "ignore_index must be an integer less than zero"
         super(AudioDetectionLoss, self).__init__()
+        self.sm_loss_w = sm_loss_w
+        self.md_loss_w = md_loss_w
+        self.lg_loss_w = lg_loss_w
         self.segment_loss_w = segment_loss_w
         self.obj_loss_w = obj_loss_w
         self.noobj_loss_w = noobj_loss_w
@@ -42,7 +48,7 @@ class AudioDetectionLoss(nn.Module):
         sm_loss, sm_loss_dict = self.loss_fn(sm_preds, sm_targets)
         md_loss, md_loss_dict = self.loss_fn(md_preds, md_targets)
         lg_loss, lg_loss_dict = self.loss_fn(lg_preds, lg_targets)
-        loss = (sm_loss + md_loss + lg_loss) / 3
+        loss = (self.sm_loss_w * sm_loss) + (self.md_loss_w * md_loss) + (self.lg_loss_w * lg_loss)
 
         loss_dict = {}
         loss_dict["aggregate_loss"] = loss.item()
