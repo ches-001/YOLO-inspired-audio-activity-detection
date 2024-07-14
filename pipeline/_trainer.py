@@ -29,6 +29,7 @@ class TrainerPipeline:
 
         self.model_path =  os.path.join(model_path, self.annotation_filename)
         self.metrics_path = os.path.join(metrics_path, self.annotation_filename)
+        print(self.model_path, "\n\n", self.metrics_path)
         self.saved_model_path = os.path.join(self.model_path, f"{self.model.__class__.__name__}.pth.tar")
 
         # collect metrics in this list of dicts

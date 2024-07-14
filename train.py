@@ -115,12 +115,24 @@ def run(config: Dict[str, Any]):
         lr_scheduler = make_lr_scheduler(optimizer, config)
 
     annotation_filename = config["train_config"]["annotation_file_path"].split("/")[-1].replace(".json", "")
+    model_path = config["train_config"]["model_path"]
+    metrics_path = config["train_config"]["metrics_path"]
+    backbone = config["backbone"]
+    block_layers = config["block_layers"]
+    blocks_str = "_".join(map(lambda x : str(x), block_layers))
+    if backbone == "custom":
+        model_path = os.path.join(model_path, f"{backbone}_{blocks_str}")
+        metrics_path = os.path.join(metrics_path, f"{backbone}_{blocks_str}")
+    elif backbone == "resnet":
+        block = config["resnet_config"]["block"]
+        model_path = os.path.join(model_path, f"{backbone}_{block}_{blocks_str}")
+        metrics_path = os.path.join(metrics_path, f"{backbone}_{block}_{blocks_str}")
     trainer_pipeline = TrainerPipeline(
         model, 
         loss_fn, 
         optimizer, 
-        model_path=config["train_config"]["model_path"], 
-        metrics_path=config["train_config"]["metrics_path"], 
+        model_path=model_path, 
+        metrics_path=metrics_path, 
         annotation_filename=annotation_filename,
         device=device
     )

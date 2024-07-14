@@ -160,7 +160,7 @@ class AudioDataset(Dataset):
             annotation = annotations[filename]
             segment_keys = sorted(list(annotation.keys()))
             sample = []
-            for key in sorted(list(annotation.keys())):
+            for key in segment_keys:
                 _class = annotation[key]["class"]
                 if _class not in unique_classes:
                     unique_classes.append(_class)
