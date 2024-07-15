@@ -8,7 +8,6 @@ class AudioDetectionLoss(nn.Module):
         self, 
         segment_loss_w: float=1.0,
         obj_loss_w: float=1.0,
-        noobj_loss_w: float=0.1,
         class_loss_w: float=1.0,
         sm_loss_w: float=.0,
         md_loss_w: float=1.0,
@@ -16,7 +15,6 @@ class AudioDetectionLoss(nn.Module):
         ignore_index: int=-100, 
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
-        ignore_conf_threhold: float=0,
         iou_confidence: bool=False,
         scale_t: Optional[int]=None,
     ):
@@ -27,11 +25,9 @@ class AudioDetectionLoss(nn.Module):
         self.lg_loss_w = lg_loss_w
         self.segment_loss_w = segment_loss_w
         self.obj_loss_w = obj_loss_w
-        self.noobj_loss_w = noobj_loss_w
         self.class_loss_w = class_loss_w
         self.ignore_index = ignore_index
         self.iou_confidence = iou_confidence
-        self.ignore_conf_threhold = ignore_conf_threhold
         self.ce_loss_fn = nn.CrossEntropyLoss(
             weight=class_weights, ignore_index=ignore_index, reduction="mean", label_smoothing=label_smoothing
         )
@@ -55,7 +51,6 @@ class AudioDetectionLoss(nn.Module):
         loss_dict["segment_loss"] = (sm_loss_dict["segment_loss"] + md_loss_dict["segment_loss"] + lg_loss_dict["segment_loss"]) / 3
         loss_dict["mean_iou"] = (sm_loss_dict["mean_iou"] + md_loss_dict["mean_iou"] + lg_loss_dict["mean_iou"]) / 3
         loss_dict["obj_loss"] = (sm_loss_dict["obj_loss"] + md_loss_dict["obj_loss"] + lg_loss_dict["obj_loss"]) / 3
-        loss_dict["noobj_loss"] = (sm_loss_dict["noobj_loss"] + md_loss_dict["noobj_loss"] + lg_loss_dict["noobj_loss"]) / 3
         loss_dict["class_loss"] = (sm_loss_dict["class_loss"] + md_loss_dict["class_loss"] + lg_loss_dict["class_loss"]) / 3
         loss_dict["accuracy"] = (sm_loss_dict["accuracy"] + md_loss_dict["accuracy"] + lg_loss_dict["accuracy"]) / 3
         loss_dict["f1"] = (sm_loss_dict["f1"] + md_loss_dict["f1"] + lg_loss_dict["f1"]) / 3
@@ -107,28 +102,15 @@ class AudioDetectionLoss(nn.Module):
         # regularisation technique, akin to label smoothening.
         if self.iou_confidence:
              target_confidence = target_confidence * ious_max.unsqueeze(-1)
-        objnoobj_loss = torch.nn.functional.binary_cross_entropy(
-            best_preds_confidence, target_confidence, reduction="none"
+        comp_pred_conf = torch.cat([best_preds_confidence.unsqueeze(-1), noobj_pred_objectness], dim=-2)
+        comp_target_conf = torch.cat([target_confidence.unsqueeze(-1), noobj_target_objectness], dim=-2)
+        num_pos = target_confidence[target_confidence > 0].shape[0]
+        num_neg = target_confidence[target_confidence == 0].shape[0]
+        num_neg += noobj_target_objectness[noobj_target_objectness == 0].shape[0]
+        pos_weight = torch.tensor([num_neg / (num_pos + 1e-10)], device=preds.device)
+        obj_loss = torch.nn.functional.binary_cross_entropy_with_logits(
+            comp_pred_conf, comp_target_conf, reduction="mean", pos_weight=pos_weight
         )
-        noobj_loss1 = torch.nn.functional.binary_cross_entropy(
-            noobj_pred_objectness, noobj_target_objectness, reduction="none"
-        )
-        noobj_loss2 = (1 - target_objectness) * objnoobj_loss
-        _device, _dtype = best_preds_confidence.device, best_preds_confidence.dtype
-        
-        # zero out the noobj losses where predicted confidence is less than `ignore_conf_threhold` 
-        # (like 0.5) and penalize the rest
-        _mask1 = torch.ones_like(noobj_pred_objectness, dtype=_dtype, device=_device)
-        _mask1[noobj_pred_objectness < self.ignore_conf_threhold] = 0
-        noobj_loss1 = _mask1 * noobj_loss1
-        _mask2 = torch.ones_like(best_preds_confidence, dtype=_dtype, device=_device)
-        _mask2[best_preds_confidence < self.ignore_conf_threhold] = 0
-        noobj_loss2 = _mask2 * noobj_loss2
-
-        noobj_loss = torch.cat([noobj_loss1, noobj_loss2.unsqueeze(-2)], dim=-2)
-        noobj_loss = noobj_loss.sum(dim=(1, 2, 3)).mean()
-        obj_loss = target_objectness * objnoobj_loss
-        obj_loss = obj_loss.sum(dim=(1, 2)).mean()
 
         # class loss
         best_pred_proba = best_preds[..., 1:-2].flatten(0, -2)
@@ -163,7 +145,6 @@ class AudioDetectionLoss(nn.Module):
         loss = (
              (self.segment_loss_w * segment_loss) + 
              (self.obj_loss_w * obj_loss) + 
-             (self.noobj_loss_w * noobj_loss) + 
              (self.class_loss_w * class_loss)
         )
 
@@ -174,7 +155,6 @@ class AudioDetectionLoss(nn.Module):
         loss_dict["segment_loss"] = segment_loss.item()
         loss_dict["obj_loss"] = obj_loss.item()
         loss_dict["mean_iou"] = mean_iou
-        loss_dict["noobj_loss"] = noobj_loss.item()
         loss_dict["class_loss"] = class_loss.item()
         loss_dict["accuracy"] = accuracy
         loss_dict["f1"] = f1

@@ -45,7 +45,7 @@ num_anchors: 3
 sample_duration: 60
 taper_input: true
 taper_window: hann
-backbone: "custom"
+backbone: "resnet"
 block_layers: [3, 4, 6, 3]
 dropout: 0.5
 
@@ -63,14 +63,12 @@ train_config:
     ignore_index: -100
     label_smoothing: 0.05
     iou_confidence: true
-    ignore_conf_threhold: 0.5
-    class_loss_w: 5.0
-    noobj_loss_w: 0.05
-    obj_loss_w: 10.0
-    segment_loss_w: 5.0
-    sm_loss_w: 1.0
-    md_loss_w: 1.0
-    lg_loss_w: 1.0
+    class_loss_w: 0.5
+    obj_loss_w: 1.0
+    segment_loss_w: 0.5
+    sm_loss_w: 0.3333
+    md_loss_w: 0.3333
+    lg_loss_w: 0.3333
 
   optimizer_config:
     lr: 0.001
