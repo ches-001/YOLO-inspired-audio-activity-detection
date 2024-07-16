@@ -63,11 +63,9 @@ train_config:
     ignore_index: -100
     label_smoothing: 0.05
     iou_confidence: true
-    ignore_conf_threhold: 0.5
-    class_loss_w: 5.0
-    noobj_loss_w: 0.05
-    obj_loss_w: 10.0
-    segment_loss_w: 5.0
+    class_loss_w: 0.5
+    obj_loss_w: 1.0
+    ciou_loss_w: 0.05
     sm_loss_w: 0.333333
     md_loss_w: 0.333333
     lg_loss_w: 0.333333

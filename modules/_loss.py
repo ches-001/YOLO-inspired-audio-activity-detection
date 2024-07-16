@@ -7,9 +7,8 @@ from typing import Tuple, Optional, Dict
 class AudioDetectionLoss(nn.Module):
     def __init__(
         self, 
-        segment_loss_w: float=1.0,
+        ciou_loss_w: float=1.0,
         obj_loss_w: float=1.0,
-        noobj_loss_w: float=0.1,
         class_loss_w: float=1.0,
         sm_loss_w: float=.0,
         md_loss_w: float=1.0,
@@ -17,7 +16,6 @@ class AudioDetectionLoss(nn.Module):
         ignore_index: int=-100, 
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
-        ignore_conf_threhold: float=0,
         iou_confidence: bool=False,
         scale_t: Optional[int]=None,
     ):
@@ -26,13 +24,11 @@ class AudioDetectionLoss(nn.Module):
         self.sm_loss_w = sm_loss_w
         self.md_loss_w = md_loss_w
         self.lg_loss_w = lg_loss_w
-        self.segment_loss_w = segment_loss_w
+        self.ciou_loss_w = ciou_loss_w
         self.obj_loss_w = obj_loss_w
-        self.noobj_loss_w = noobj_loss_w
         self.class_loss_w = class_loss_w
         self.ignore_index = ignore_index
         self.iou_confidence = iou_confidence
-        self.ignore_conf_threhold = ignore_conf_threhold
         self.ce_loss_fn = nn.CrossEntropyLoss(
             weight=class_weights, ignore_index=ignore_index, reduction="mean", label_smoothing=label_smoothing
         )
@@ -54,10 +50,8 @@ class AudioDetectionLoss(nn.Module):
         metrics_df = pd.DataFrame([sm_metrics_dict, md_metrics_dict, lg_metrics_dict])
 
         metrics_dict["aggregate_loss"] = loss.item()
-        metrics_dict["segment_loss"] = metrics_df["segment_loss"].mean()
-        metrics_dict["mean_iou"] = metrics_df["mean_iou"].mean()
+        metrics_dict["mean_ciou"] = metrics_df["mean_ciou"].mean()
         metrics_dict["obj_loss"] = metrics_df["obj_loss"].mean()
-        metrics_dict["noobj_loss"] = metrics_df["noobj_loss"].mean()
         metrics_dict["class_loss"] = metrics_df["class_loss"].mean()
         metrics_dict["accuracy"] = metrics_df["accuracy"].mean()
         metrics_dict["f1"] = metrics_df["f1"].mean()
@@ -69,9 +63,8 @@ class AudioDetectionLoss(nn.Module):
     def loss_fn(self, preds: torch.Tensor, targets: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, float]]:
         assert preds.ndim == targets.ndim + 1
         # sm_pred: (S x 3 x (3 + C))     sm_target: (S, 4)
-        with torch.no_grad():
-            ious_per_anchors = AudioDetectionLoss.compute_iou(preds[..., -2:], targets[..., -2:])
-            ious_max, best_anchoridx = torch.max(ious_per_anchors, dim=-1)
+        ious_per_anchors = AudioDetectionLoss.compute_ciou(preds[..., -2:], targets[..., -2:])
+        ious_max, best_anchoridx = torch.max(ious_per_anchors, dim=-1)
 
         noobj_pred_mask = torch.ones_like(preds[..., 0], dtype=torch.bool)
         noobj_pred_mask = noobj_pred_mask.scatter(2, best_anchoridx.unsqueeze(-1), False)
@@ -85,17 +78,13 @@ class AudioDetectionLoss(nn.Module):
         best_preds = best_preds.squeeze(dim=2)
 
         # segment center and duration loss
-        pred_segments = best_preds[..., -2:] / self.scale_t
-        target_segments = targets[..., -2:] / self.scale_t
-        segment_loss = torch.nn.functional.mse_loss(pred_segments, target_segments, reduction="none")
-        segment_loss = target_objectness * segment_loss
-        segment_loss = segment_loss.sum(dim=(1, 2)).mean()
+        ciou_loss = 1 - ious_max.unsqueeze(-1)[target_objectness == 1].mean()
 
         # confidence / objectness loss
-        best_preds_confidence = best_preds[..., :1]
         noobj_pred_objectness = noobj_preds[..., :1]
         target_confidence = targets[..., :1]
-        noobj_target_confidence = torch.zeros_like(
+        best_preds_confidence = best_preds[..., :1]
+        noobj_target_objectness = torch.zeros_like(
              noobj_pred_objectness, dtype=noobj_preds.dtype, device=noobj_preds.device
         )
         # target confidence can either be 1 where an audio segment is present and 0s where
@@ -105,28 +94,15 @@ class AudioDetectionLoss(nn.Module):
         # regularisation technique, akin to label smoothening.
         if self.iou_confidence:
              target_confidence = target_confidence * ious_max.unsqueeze(-1)
-        objnoobj_loss = torch.nn.functional.binary_cross_entropy_with_logits(
-            best_preds_confidence, target_confidence, reduction="none"
+        comp_pred_conf = torch.cat([best_preds_confidence.unsqueeze(-1), noobj_pred_objectness], dim=-2)
+        comp_target_conf = torch.cat([target_confidence.unsqueeze(-1), noobj_target_objectness], dim=-2)
+        num_pos = target_confidence[target_confidence > 0].shape[0]
+        num_neg = target_confidence[target_confidence == 0].shape[0]
+        num_neg += noobj_target_objectness[noobj_target_objectness == 0].shape[0]
+        pos_weight = torch.tensor([num_neg / (num_pos + 1e-10)], device=preds.device)
+        obj_loss = torch.nn.functional.binary_cross_entropy_with_logits(
+            comp_pred_conf, comp_target_conf, reduction="mean", pos_weight=pos_weight
         )
-        noobj_loss1 = torch.nn.functional.binary_cross_entropy_with_logits(
-            noobj_pred_objectness, noobj_target_confidence, reduction="none"
-        )
-        noobj_loss2 = (1 - target_objectness) * objnoobj_loss
-        _device, _dtype = best_preds_confidence.device, best_preds_confidence.dtype
-        
-        # zero out the noobj losses where predicted confidence is less than `ignore_conf_threhold` 
-        # (like 0.5) and penalize the rest
-        _mask1 = torch.ones_like(noobj_pred_objectness, dtype=_dtype, device=_device)
-        _mask1[noobj_pred_objectness < self.ignore_conf_threhold] = 0
-        noobj_loss1 = _mask1 * noobj_loss1
-        _mask2 = torch.ones_like(best_preds_confidence, dtype=_dtype, device=_device)
-        _mask2[best_preds_confidence < self.ignore_conf_threhold] = 0
-        noobj_loss2 = _mask2 * noobj_loss2
-
-        noobj_loss = torch.cat([noobj_loss1, noobj_loss2.unsqueeze(-2)], dim=-2)
-        noobj_loss = noobj_loss.sum(dim=(1, 2, 3)).mean()
-        obj_loss = target_objectness * objnoobj_loss
-        obj_loss = obj_loss.sum(dim=(1, 2)).mean()
 
         # class loss
         best_pred_proba = best_preds[..., 1:-2].flatten(0, -2)
@@ -157,19 +133,13 @@ class AudioDetectionLoss(nn.Module):
 
         # aggregate losses
         loss = (
-             (self.segment_loss_w * segment_loss) + 
              (self.obj_loss_w * obj_loss) + 
-             (self.noobj_loss_w * noobj_loss) + 
+             (self.ciou_loss_w * (ciou_loss) if ciou_loss == ciou_loss else torch.tensor(0.0, device=ciou_loss.device)) + 
              (self.class_loss_w * (class_loss) if class_loss == class_loss else torch.tensor(0.0, device=class_loss.device))
         )
-        # mean iou
-        mean_iou = ious_max.unsqueeze(-1)[target_objectness == 1].mean().cpu().item()
-        if mean_iou != mean_iou: mean_iou = torch.nan
         metrics_dict = {}
-        metrics_dict["segment_loss"] = segment_loss.item()
+        metrics_dict["mean_ciou"] = 1 - ciou_loss.item()
         metrics_dict["obj_loss"] = obj_loss.item()
-        metrics_dict["mean_iou"] = mean_iou
-        metrics_dict["noobj_loss"] = noobj_loss.item()
         metrics_dict["class_loss"] = class_loss.item()
         metrics_dict["accuracy"] = accuracy
         metrics_dict["f1"] = f1
@@ -178,18 +148,39 @@ class AudioDetectionLoss(nn.Module):
         return loss, metrics_dict
 
     @staticmethod
-    def compute_iou(preds_cw: torch.Tensor, targets_cw: torch.Tensor, e: float=1e-15) -> torch.Tensor:
+    def compute_ciou(preds_cw: torch.Tensor, targets_cw: torch.Tensor, e: float=1e-15, _h: float=10.0) -> torch.Tensor:
         # preds_cw: (S x 3 x 2)     targets_cw: (S x 2) | (S x 1 x 2)
         assert (preds_cw.ndim == targets_cw.ndim + 1) or (preds_cw.ndim == targets_cw.ndim)
         if targets_cw.ndim != preds_cw.ndim:
                 targets_cw = targets_cw.unsqueeze(dim=-2)
-        preds_w, targets_w = preds_cw[..., 1], targets_cw[..., 1]
-        preds_c, targets_c = preds_cw[..., 0], targets_cw[..., 0]
-        preds_x1, targets_x1 = preds_c - (preds_w / 2), targets_c - (targets_w / 2)
-        preds_x2, targets_x2 = preds_c + (preds_w / 2), targets_c + (targets_w / 2)
-        intersection = torch.min(preds_x2, targets_x2) - torch.max(preds_x1, targets_x1)
-        intersection = torch.clip(intersection, min=0)
-        union = ((preds_x2 - preds_x1) + (targets_x2 - targets_x1)) - intersection
-        union = union + e
-        iou = intersection / union
-        return iou
+
+        pred_c = preds_cw[..., :1]
+        pred_w = preds_cw[..., -1:]
+        pred_h = torch.ones_like(pred_w, device=pred_w.device) * _h
+        pred_x1 = pred_c - (pred_w / 2)
+        pred_y1 = torch.zeros_like(pred_x1, device=pred_x1.device)
+        pred_x2 = pred_c + (pred_w / 2)
+        pred_y2 = pred_h
+
+        target_c = targets_cw[..., :1]
+        target_w = targets_cw[..., -1:]
+        target_h = torch.ones_like(target_w, device=target_w.device) * _h
+        target_x1 = target_c - (target_w / 2)
+        target_y1 = torch.zeros_like(target_x1, device=target_x1.device)
+        target_x2 = target_c + (target_w / 2)
+        target_y2 = target_h
+
+        intersection_w = (torch.min(pred_x2, target_x2) - torch.max(pred_x1, target_x1))
+        intersection_h = (torch.min(pred_y2, target_y2) - torch.max(pred_y1, target_y1))
+        intersection = intersection_w * intersection_h
+        union = (pred_w * pred_h) + (target_w * target_h) - intersection
+        iou = intersection / (union + e)
+
+        cw = (torch.max(pred_x2, target_x2) - torch.min(pred_x1, target_x1))
+        ch = (torch.max(pred_y2, target_y2) - torch.min(pred_y1, target_y1))
+        c2 = cw.pow(2) + ch.pow(2) + e
+        v = (4 / (torch.pi**2)) * (torch.arctan(target_w / target_h) - torch.arctan(pred_w / pred_h)).pow(2)
+        rho2 = (pred_c - target_c).pow(2) + (pred_h/2 - target_h/2).pow(2)
+        a = v / ((1 + e) - iou) + v
+        ciou = iou - ((rho2/c2) + (a * v))
+        return ciou.squeeze(-1)
