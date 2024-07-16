@@ -13,7 +13,7 @@ from modules import AudioDetectionNetwork, AudioDetectionLoss
 from pipeline import TrainerPipeline
 from typing import *
 
-SEED = 3047
+SEED = 42
 CONFIG_PATH = "config/config.yaml"
 TRAIN_DATA_PATH = "dataset/train"
 EVAL_DATA_PATH = "dataset/eval"
