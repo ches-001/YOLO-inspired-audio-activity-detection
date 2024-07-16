@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from typing import Tuple, Optional, Dict
 
@@ -42,33 +43,35 @@ class AudioDetectionLoss(nn.Module):
             preds: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], 
             targets: Tuple[torch.Tensor, torch.Tensor, torch.Tensor]
     ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        
+        metrics_dict = {}
         sm_preds, md_preds, lg_preds = preds
         sm_targets, md_targets, lg_targets = targets
-        
-        sm_loss, sm_loss_dict = self.loss_fn(sm_preds, sm_targets)
-        md_loss, md_loss_dict = self.loss_fn(md_preds, md_targets)
-        lg_loss, lg_loss_dict = self.loss_fn(lg_preds, lg_targets)
+        sm_loss, sm_metrics_dict = self.loss_fn(sm_preds, sm_targets)
+        md_loss, md_metrics_dict = self.loss_fn(md_preds, md_targets)
+        lg_loss, lg_metrics_dict = self.loss_fn(lg_preds, lg_targets)
         loss = (self.sm_loss_w * sm_loss) + (self.md_loss_w * md_loss) + (self.lg_loss_w * lg_loss)
+        metrics_df = pd.DataFrame([sm_metrics_dict, md_metrics_dict, lg_metrics_dict])
 
-        loss_dict = {}
-        loss_dict["aggregate_loss"] = loss.item()
-        loss_dict["segment_loss"] = (sm_loss_dict["segment_loss"] + md_loss_dict["segment_loss"] + lg_loss_dict["segment_loss"]) / 3
-        loss_dict["mean_iou"] = (sm_loss_dict["mean_iou"] + md_loss_dict["mean_iou"] + lg_loss_dict["mean_iou"]) / 3
-        loss_dict["obj_loss"] = (sm_loss_dict["obj_loss"] + md_loss_dict["obj_loss"] + lg_loss_dict["obj_loss"]) / 3
-        loss_dict["noobj_loss"] = (sm_loss_dict["noobj_loss"] + md_loss_dict["noobj_loss"] + lg_loss_dict["noobj_loss"]) / 3
-        loss_dict["class_loss"] = (sm_loss_dict["class_loss"] + md_loss_dict["class_loss"] + lg_loss_dict["class_loss"]) / 3
-        loss_dict["accuracy"] = (sm_loss_dict["accuracy"] + md_loss_dict["accuracy"] + lg_loss_dict["accuracy"]) / 3
-        loss_dict["f1"] = (sm_loss_dict["f1"] + md_loss_dict["f1"] + lg_loss_dict["f1"]) / 3
-        loss_dict["precision"] = (sm_loss_dict["precision"] + md_loss_dict["precision"] + lg_loss_dict["precision"]) / 3
-        loss_dict["recall"] = (sm_loss_dict["recall"] + md_loss_dict["recall"] + lg_loss_dict["recall"]) / 3
-        return loss, loss_dict
+        metrics_dict["aggregate_loss"] = loss.item()
+        metrics_dict["segment_loss"] = metrics_df["segment_loss"].mean()
+        metrics_dict["mean_iou"] = metrics_df["mean_iou"].mean()
+        metrics_dict["obj_loss"] = metrics_df["obj_loss"].mean()
+        metrics_dict["noobj_loss"] = metrics_df["noobj_loss"].mean()
+        metrics_dict["class_loss"] = metrics_df["class_loss"].mean()
+        metrics_dict["accuracy"] = metrics_df["accuracy"].mean()
+        metrics_dict["f1"] = metrics_df["f1"].mean()
+        metrics_dict["precision"] = metrics_df["precision"].mean()
+        metrics_dict["recall"] = metrics_df["recall"].mean()
+        return loss, metrics_dict
 
 
     def loss_fn(self, preds: torch.Tensor, targets: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, float]]:
         assert preds.ndim == targets.ndim + 1
         # sm_pred: (S x 3 x (3 + C))     sm_target: (S, 4)
-        ious_per_anchors = AudioDetectionLoss.compute_iou(preds[..., -2:], targets[..., -2:])
-        ious_max, best_anchoridx = torch.max(ious_per_anchors, dim=-1)
+        with torch.no_grad():
+            ious_per_anchors = AudioDetectionLoss.compute_iou(preds[..., -2:], targets[..., -2:])
+            ious_max, best_anchoridx = torch.max(ious_per_anchors, dim=-1)
 
         noobj_pred_mask = torch.ones_like(preds[..., 0], dtype=torch.bool)
         noobj_pred_mask = noobj_pred_mask.scatter(2, best_anchoridx.unsqueeze(-1), False)
@@ -77,14 +80,9 @@ class AudioDetectionLoss(nn.Module):
         # target objectness scores (1 if object, 0 if no object)
         target_objectness = targets[..., :1]
         best_anchoridx = best_anchoridx.unsqueeze(-1).unsqueeze(-1)
-        if preds.ndim == 4:
-             best_anchoridx = best_anchoridx.expand(*preds.shape[0:2], -1, preds.shape[-1])
-             best_preds = torch.gather(preds, dim=2, index=best_anchoridx)
-             best_preds = best_preds.squeeze(dim=2)
-        else:
-             best_anchoridx = best_anchoridx.expand(preds.shape[0], -1, preds.shape[-1])
-             best_preds = torch.gather(preds, dim=1, index=best_anchoridx)
-             best_preds = best_preds.squeeze(dim=1)
+        best_anchoridx = best_anchoridx.expand(*preds.shape[0:2], -1, preds.shape[-1])
+        best_preds = torch.gather(preds, dim=2, index=best_anchoridx)
+        best_preds = best_preds.squeeze(dim=2)
 
         # segment center and duration loss
         pred_segments = best_preds[..., -2:] / self.scale_t
@@ -94,10 +92,10 @@ class AudioDetectionLoss(nn.Module):
         segment_loss = segment_loss.sum(dim=(1, 2)).mean()
 
         # confidence / objectness loss
+        best_preds_confidence = best_preds[..., :1]
         noobj_pred_objectness = noobj_preds[..., :1]
         target_confidence = targets[..., :1]
-        best_preds_confidence = best_preds[..., :1]
-        noobj_target_objectness = torch.zeros_like(
+        noobj_target_confidence = torch.zeros_like(
              noobj_pred_objectness, dtype=noobj_preds.dtype, device=noobj_preds.device
         )
         # target confidence can either be 1 where an audio segment is present and 0s where
@@ -111,7 +109,7 @@ class AudioDetectionLoss(nn.Module):
             best_preds_confidence, target_confidence, reduction="none"
         )
         noobj_loss1 = torch.nn.functional.binary_cross_entropy_with_logits(
-            noobj_pred_objectness, noobj_target_objectness, reduction="none"
+            noobj_pred_objectness, noobj_target_confidence, reduction="none"
         )
         noobj_loss2 = (1 - target_objectness) * objnoobj_loss
         _device, _dtype = best_preds_confidence.device, best_preds_confidence.dtype
@@ -145,8 +143,6 @@ class AudioDetectionLoss(nn.Module):
         target_classes = target_classes.flatten(0, -1).to(device=targets.device, dtype=torch.int64)
         tiled_target_classes = tiled_target_classes.flatten(0, -1).to(device=targets.device, dtype=torch.int64)
         class_loss = self.ce_loss_fn(all_pred_proba, tiled_target_classes)
-        if class_loss != class_loss: # if class_loss is NaN:
-             class_loss = torch.tensor(0.0, dtype=best_pred_proba.dtype, device=best_pred_proba.device)
 
         # accuracy, precision, recall
         pred_labels = best_pred_proba[target_classes != self.ignore_index].detach().argmax(dim=-1).cpu().numpy()
@@ -157,30 +153,29 @@ class AudioDetectionLoss(nn.Module):
             precision = precision_score(target_labels, pred_labels, average="macro")    
             recall = recall_score(target_labels, pred_labels, average="macro")
         else:
-             accuracy, f1, precision, recall = [1] * 4
+             accuracy, f1, precision, recall = [torch.nan] * 4
 
         # aggregate losses
         loss = (
              (self.segment_loss_w * segment_loss) + 
              (self.obj_loss_w * obj_loss) + 
              (self.noobj_loss_w * noobj_loss) + 
-             (self.class_loss_w * class_loss)
+             (self.class_loss_w * (class_loss) if class_loss == class_loss else torch.tensor(0.0, device=class_loss.device))
         )
-
         # mean iou
         mean_iou = ious_max.unsqueeze(-1)[target_objectness == 1].mean().cpu().item()
-        if mean_iou != mean_iou: mean_iou = 1.0
-        loss_dict = {}
-        loss_dict["segment_loss"] = segment_loss.item()
-        loss_dict["obj_loss"] = obj_loss.item()
-        loss_dict["mean_iou"] = mean_iou
-        loss_dict["noobj_loss"] = noobj_loss.item()
-        loss_dict["class_loss"] = class_loss.item()
-        loss_dict["accuracy"] = accuracy
-        loss_dict["f1"] = f1
-        loss_dict["precision"] = precision
-        loss_dict["recall"] = recall
-        return loss, loss_dict
+        if mean_iou != mean_iou: mean_iou = torch.nan
+        metrics_dict = {}
+        metrics_dict["segment_loss"] = segment_loss.item()
+        metrics_dict["obj_loss"] = obj_loss.item()
+        metrics_dict["mean_iou"] = mean_iou
+        metrics_dict["noobj_loss"] = noobj_loss.item()
+        metrics_dict["class_loss"] = class_loss.item()
+        metrics_dict["accuracy"] = accuracy
+        metrics_dict["f1"] = f1
+        metrics_dict["precision"] = precision
+        metrics_dict["recall"] = recall
+        return loss, metrics_dict
 
     @staticmethod
     def compute_iou(preds_cw: torch.Tensor, targets_cw: torch.Tensor, e: float=1e-15) -> torch.Tensor:
