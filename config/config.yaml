@@ -55,7 +55,7 @@ resnet_config:
 train_config:
   annotation_file_path: dataset/annotations/MD_mapping.json
   annotator: annotator_a
-  batch_size: 32
+  batch_size: 5
   device: cuda
   epochs: 180
 
@@ -63,9 +63,9 @@ train_config:
     ignore_index: -100
     label_smoothing: 0.05
     iou_confidence: true
-    class_loss_w: 0.5
+    class_loss_w: 1.0
     obj_loss_w: 1.0
-    ciou_loss_w: 0.05
+    ciou_loss_w: 1.0
     sm_loss_w: 0.333333
     md_loss_w: 0.333333
     lg_loss_w: 0.333333

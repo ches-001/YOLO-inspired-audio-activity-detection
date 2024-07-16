@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from typing import Tuple, Optional, Dict
@@ -100,7 +101,7 @@ class AudioDetectionLoss(nn.Module):
         num_neg = target_confidence[target_confidence == 0].shape[0]
         num_neg += noobj_target_objectness[noobj_target_objectness == 0].shape[0]
         pos_weight = torch.tensor([num_neg / (num_pos + 1e-10)], device=preds.device)
-        obj_loss = torch.nn.functional.binary_cross_entropy_with_logits(
+        obj_loss = F.binary_cross_entropy_with_logits(
             comp_pred_conf, comp_target_conf, reduction="mean", pos_weight=pos_weight
         )
 
