@@ -108,26 +108,26 @@ class AudioDetectionLoss(nn.Module):
         # class loss
         best_pred_proba = best_preds[..., 1:-2]
         target_classes = targets[..., 1:-2]  
-        target_classes[target_classes == 1] = (
-            (1 - self.label_smoothing) * 
-            (target_classes[target_classes == 1] + (self.label_smoothing / best_pred_proba.shape[-1]))
-        )
-        pos_weight = (
-            target_classes[target_classes > 0].shape[0] /
-            (target_classes[target_classes == 0].shape[0] + 1e-10)
-        )
-        pos_weight = torch.tensor(pos_weight, device=_device)
-        class_loss = F.binary_cross_entropy_with_logits(
-            best_pred_proba, target_classes, reduction="none", pos_weight=pos_weight
-        )
-        if torch.is_tensor(self.class_weights):
-            class_loss = (class_loss * self.class_weights)
-        class_loss = class_loss.mean()
+        # target_classes[target_classes == 1] = (
+        #     (1 - self.label_smoothing) * 
+        #     (target_classes[target_classes == 1] + (self.label_smoothing / best_pred_proba.shape[-1]))
+        # )
+        # pos_weight = (
+        #     target_classes[target_classes > 0].shape[0] /
+        #     (target_classes[target_classes == 0].shape[0] + 1e-10)
+        # )
+        # pos_weight = torch.tensor(pos_weight, device=_device)
+        # class_loss = F.binary_cross_entropy_with_logits(
+        #     best_pred_proba, target_classes, reduction="none", pos_weight=pos_weight
+        # )
+        # if torch.is_tensor(self.class_weights):
+        #     class_loss = (class_loss * self.class_weights)
+        # class_loss = class_loss.mean()
         target_classes_idx = target_classes.argmax(dim=-1)
         target_classes_idx[targets[..., 1:-2].sum(dim=-1) == 0] = self.ignore_index
         target_classes_idx = target_classes_idx.reshape(-1)
         best_pred_proba = best_pred_proba.reshape(-1, best_pred_proba.shape[-1])
-        # class_loss = self.ce_loss_fn(best_pred_proba, target_classes_idx)
+        class_loss = self.ce_loss_fn(best_pred_proba, target_classes_idx)
         
         # accuracy, precision, recall
         if target_classes.max() > 0:
