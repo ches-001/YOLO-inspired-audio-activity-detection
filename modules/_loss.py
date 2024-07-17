@@ -9,30 +9,26 @@ class AudioDetectionLoss(nn.Module):
     def __init__(
         self, 
         ciou_loss_w: float=1.0,
-        obj_loss_w: float=1.0,
+        conf_loss_w: float=1.0,
         class_loss_w: float=1.0,
         sm_loss_w: float=.0,
         md_loss_w: float=1.0,
         lg_loss_w: float=1.0,
-        ignore_index: int=-100, 
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
         iou_confidence: bool=False,
         scale_t: Optional[int]=None,
     ):
-        assert isinstance(ignore_index, int) and ignore_index < 0, "ignore_index must be an integer less than zero"
         super(AudioDetectionLoss, self).__init__()
         self.sm_loss_w = sm_loss_w
         self.md_loss_w = md_loss_w
         self.lg_loss_w = lg_loss_w
         self.ciou_loss_w = ciou_loss_w
-        self.obj_loss_w = obj_loss_w
+        self.conf_loss_w = conf_loss_w
         self.class_loss_w = class_loss_w
-        self.ignore_index = ignore_index
+        self.class_weights = class_weights
+        self.label_smoothing = label_smoothing
         self.iou_confidence = iou_confidence
-        self.ce_loss_fn = nn.CrossEntropyLoss(
-            weight=class_weights, ignore_index=ignore_index, reduction="mean", label_smoothing=label_smoothing
-        )
         self.scale_t = scale_t if scale_t else 1
 
     def forward(
@@ -52,7 +48,7 @@ class AudioDetectionLoss(nn.Module):
 
         metrics_dict["aggregate_loss"] = loss.item()
         metrics_dict["mean_ciou"] = metrics_df["mean_ciou"].mean()
-        metrics_dict["obj_loss"] = metrics_df["obj_loss"].mean()
+        metrics_dict["conf_loss"] = metrics_df["conf_loss"].mean()
         metrics_dict["class_loss"] = metrics_df["class_loss"].mean()
         metrics_dict["accuracy"] = metrics_df["accuracy"].mean()
         metrics_dict["f1"] = metrics_df["f1"].mean()
@@ -100,30 +96,33 @@ class AudioDetectionLoss(nn.Module):
         num_neg = target_confidence[target_confidence == 0].shape[0]
         num_neg += noobj_target_confidence[noobj_target_confidence == 0].shape[0]
         pos_weight = torch.tensor([num_neg / (num_pos + 1e-10)], device=preds.device)
-        obj_loss = F.binary_cross_entropy_with_logits(
+        conf_loss = F.binary_cross_entropy_with_logits(
             comp_pred_conf, comp_target_conf, reduction="mean", pos_weight=pos_weight
         )
 
         # class loss
-        best_pred_proba = best_preds[..., 1:-2].flatten(0, -2)
-        all_pred_proba = preds[..., 1:-2].flatten(0, -2)
-        target_classes = targets[..., 1:2].clone()
-        target_classes[target_confidence == 0] = self.ignore_index
-        # despite the fact that only one of the 3 anchor boxes can be valid, we still need the model to have
-        # the same set of class probability scores per cell regardless of the number of boxes being predicted
-        # by that cell. As such we tile the target class labels from shape (N, ncells, 1) to (N, ncells, 3)
-        # and compare across the 3 boundary predictions of the model (N, ncells, 3, num_classes) then squeeze
-        # both to correspond to shapes (N x ncells x 3) and (N x ncells x 3, num_classes) respectively for
-        # cross entropy
-        tiled_target_classes = target_classes.tile(1, 1, preds.shape[-2])
-        target_classes = target_classes.flatten(0, -1).to(device=targets.device, dtype=torch.int64)
-        tiled_target_classes = tiled_target_classes.flatten(0, -1).to(device=targets.device, dtype=torch.int64)
-        class_loss = self.ce_loss_fn(all_pred_proba, tiled_target_classes)
-
+        best_pred_proba = best_preds[..., 1:-2]
+        target_classes = targets[..., 1:-2]
+        pos_mask = target_classes > 0
+        neg_mask = target_classes == 0
+        target_classes[pos_mask] = (
+             (1 - self.label_smoothing) * 
+             (target_classes[pos_mask] + (self.label_smoothing / best_pred_proba.shape[-1]))
+        )
+        num_pos = target_classes[pos_mask].shape[0]
+        num_neg = target_classes[neg_mask].shape[0]
+        pos_weight = torch.tensor([num_neg / (num_pos + 1e-10)], device=preds.device)
+        class_loss = F.binary_cross_entropy_with_logits(
+             best_pred_proba, target_classes, reduction="none", pos_weight=pos_weight
+        )
+        if torch.is_tensor(self.class_weights):
+             class_loss = class_loss * self.class_weights
+        class_loss = class_loss.mean()
+        
         # accuracy, precision, recall
-        pred_labels = best_pred_proba[target_classes != self.ignore_index].detach().argmax(dim=-1).cpu().numpy()
-        target_labels = target_classes[target_classes != self.ignore_index].cpu().numpy()
-        if pred_labels.shape[0] != 0:
+        if target_classes.max() != 0:
+            pred_labels = best_pred_proba.detach().argmax(dim=-1).cpu().numpy()
+            target_labels = target_classes.argmax(dim=-1).cpu().numpy()
             accuracy = accuracy_score(target_labels, pred_labels)
             f1 = f1_score(target_labels, pred_labels, average="macro")
             precision = precision_score(target_labels, pred_labels, average="macro")    
@@ -133,13 +132,13 @@ class AudioDetectionLoss(nn.Module):
 
         # aggregate losses
         loss = (
-             (self.obj_loss_w * obj_loss) + 
+             (self.conf_loss_w * conf_loss) + 
              (self.ciou_loss_w * (ciou_loss) if ciou_loss == ciou_loss else torch.tensor(0.0, device=ciou_loss.device)) + 
              (self.class_loss_w * (class_loss) if class_loss == class_loss else torch.tensor(0.0, device=class_loss.device))
         )
         metrics_dict = {}
         metrics_dict["mean_ciou"] = 1 - ciou_loss.item()
-        metrics_dict["obj_loss"] = obj_loss.item()
+        metrics_dict["conf_loss"] = conf_loss.item()
         metrics_dict["class_loss"] = class_loss.item()
         metrics_dict["accuracy"] = accuracy
         metrics_dict["f1"] = f1

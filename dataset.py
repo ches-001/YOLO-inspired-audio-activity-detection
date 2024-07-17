@@ -1,11 +1,10 @@
 import os
-import glob
 import tqdm
 import torch
 import torchaudio
 import numpy as np
 from torch.utils.data import Dataset
-from sklearn.utils.class_weight import compute_class_weight
+from torch.nn.functional import one_hot
 from typing import *
 
 
@@ -19,7 +18,6 @@ class AudioDataset(Dataset):
             num_sm_segments: int=120,
             sample_rate: int=22_050,
             extension: str="wav",
-            ignore_index: int=-100,
         ):
         self.audios_path = audios_path
         self.sample_duration = sample_duration
@@ -32,7 +30,6 @@ class AudioDataset(Dataset):
         self._samples = []
         self.label_counts = {}
         self.anchors_dict = anchors_dict
-        self.ignore_index = ignore_index
         audio_filenames = [i.replace(f".{extension}", "") for i in os.listdir(self.audios_path)]
         annotations = {k:v for k, v in self.orig_annotations.items() if k in audio_filenames}
         self._index_samples(annotations)
@@ -70,13 +67,14 @@ class AudioDataset(Dataset):
 
         sample_classes = torch.from_numpy(
             np.vectorize(lambda label : self.label2idx[label])(sample_classes)
-        ).to(torch.int64)  
+        ).to(torch.int64) 
+        sample_classes_ohe = one_hot(sample_classes.long(), num_classes=len(self.label2idx)).float() 
         # sample segment length instead of sample segment end (aspar YOLO convention)
         sample_times[:, 1] = (sample_times[:, 1] - sample_times[:, 0])
         # segment center instead of segment start (aspar YOLO convention)
         sample_times[:, 0] = sample_times[:, 0] + (sample_times[:, 1] / 2)
         sample_times = torch.from_numpy(sample_times).to(dtype=torch.float32)
-        sample_labels = torch.cat((sample_classes.unsqueeze(dim=-1), sample_times), dim=-1)
+        sample_labels = torch.cat((sample_classes_ohe, sample_times), dim=-1)
 
         # pad audio file if audio file duration not up to `sample_duration`
         max_num_samples = self.sample_duration * self.sample_rate
@@ -88,7 +86,7 @@ class AudioDataset(Dataset):
             audio_tensor = torch.cat((audio_tensor, pad), dim=-1)
             _pad_duration = (audio_start + self.sample_duration) - audio_end
             _pad_center = audio_end + (_pad_duration / 2)
-            pad_label = torch.tensor([self.ignore_index, _pad_center, _pad_duration]).unsqueeze(dim=0)
+            pad_label = torch.tensor([*torch.zeros(len(self.label2idx)), _pad_center, _pad_duration]).unsqueeze(dim=0)
             sample_labels = torch.cat((sample_labels, pad_label), dim=0)
 
         # format labels to 3D tensors of different scales
@@ -120,28 +118,29 @@ class AudioDataset(Dataset):
         # second index of last dimension corresponds to label
         # third index of last dimension corresponds to center of segment
         # last index of last dimension corresponds to duration / width of segment
-        sm_bsegments = torch.zeros((num_sm_segments, 4), dtype=torch.float32)
-        md_bsegments = torch.zeros((num_md_segments, 4), dtype=torch.float32)
-        lg_bsegments = torch.zeros((num_lg_segments, 4), dtype=torch.float32)
+        num_classes = len(self.label2idx)
+        sm_bsegments = torch.zeros((num_sm_segments, 3+num_classes), dtype=torch.float32)
+        md_bsegments = torch.zeros((num_md_segments, 3+num_classes), dtype=torch.float32)
+        lg_bsegments = torch.zeros((num_lg_segments, 3+num_classes), dtype=torch.float32)
         if sm_segments.numel() > 0:
             num_cells = self.sample_duration / num_sm_segments
-            sm_cellidx = torch.ceil((sm_segments[:, 1] / num_cells) - 1).to(dtype=torch.int64)
+            sm_cellidx = torch.ceil((sm_segments[:, -2] / num_cells) - 1).to(dtype=torch.int64)
             sm_bsegments[sm_cellidx, 0] = 1
             sm_bsegments[sm_cellidx, 1:] = sm_segments
         if md_segments.numel() > 0:
             num_cells = self.sample_duration / num_md_segments
-            md_cellidx = torch.ceil((md_segments[:, 1] / num_cells) - 1).to(dtype=torch.int64)
+            md_cellidx = torch.ceil((md_segments[:, -2] / num_cells) - 1).to(dtype=torch.int64)
             md_bsegments[md_cellidx, 0] = 1
             md_bsegments[md_cellidx, 1:] = md_segments
         if lg_segments.numel() > 0:
             num_cells = self.sample_duration / num_lg_segments
-            lg_cellidx = torch.ceil((lg_segments[:, 1] / num_cells) - 1).to(dtype=torch.int64)
+            lg_cellidx = torch.ceil((lg_segments[:, -2] / num_cells) - 1).to(dtype=torch.int64)
             lg_bsegments[lg_cellidx, 0] = 1
             lg_bsegments[lg_cellidx, 1:] = lg_segments
 
-        sm_bsegments[sm_bsegments[..., 1] == self.ignore_index, 0] = 0
-        md_bsegments[md_bsegments[..., 1] == self.ignore_index, 0] = 0
-        lg_bsegments[lg_bsegments[..., 1] == self.ignore_index, 0] = 0
+        sm_bsegments[sm_bsegments[..., 1:-2].sum(dim=-1) == 0, 0] = 0
+        md_bsegments[md_bsegments[..., 1:-2].sum(dim=-1) == 0, 0] = 0
+        lg_bsegments[lg_bsegments[..., 1:-2].sum(dim=-1) == 0, 0] = 0
         return sm_bsegments, md_bsegments, lg_bsegments
 
 

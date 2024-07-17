@@ -49,7 +49,6 @@ def make_dataset(path: str, config: Dict[str, Any], annotations: Dict[str, Any])
         num_sm_segments=num_sm_segments,
         sample_rate=config["sample_rate"],
         extension=config["audio_extension"],
-        ignore_index=config["train_config"]["loss_config"]["ignore_index"]
     )
     return AudioDataset(path, **kwargs)
 
