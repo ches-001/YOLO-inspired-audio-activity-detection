@@ -18,6 +18,7 @@ class AudioDetectionLoss(nn.Module):
         label_smoothing: float=0,
         iou_confidence: bool=False,
         scale_t: Optional[int]=None,
+        ignore_index: int=-100
     ):
         super(AudioDetectionLoss, self).__init__()
         self.sm_loss_w = sm_loss_w
@@ -30,6 +31,9 @@ class AudioDetectionLoss(nn.Module):
         self.label_smoothing = label_smoothing
         self.iou_confidence = iou_confidence
         self.scale_t = scale_t if scale_t else 1
+        self.ignore_index = ignore_index
+
+        self.ce_loss_fn = nn.CrossEntropyLoss(weight=self.class_weights, reduce="mean", ignore_index=self.ignore_index)
 
     def forward(
             self, 
@@ -102,27 +106,17 @@ class AudioDetectionLoss(nn.Module):
 
         # class loss
         best_pred_proba = best_preds[..., 1:-2]
-        target_classes = targets[..., 1:-2]
-        pos_mask = target_classes > 0
-        neg_mask = target_classes == 0
-        target_classes[pos_mask] = (
-             (1 - self.label_smoothing) * 
-             (target_classes[pos_mask] + (self.label_smoothing / best_pred_proba.shape[-1]))
-        )
-        num_pos = target_classes[pos_mask].shape[0]
-        num_neg = target_classes[neg_mask].shape[0]
-        pos_weight = torch.tensor([num_neg / (num_pos + 1e-10)], device=preds.device)
-        class_loss = F.binary_cross_entropy_with_logits(
-             best_pred_proba, target_classes, reduction="none", pos_weight=pos_weight
-        )
-        if torch.is_tensor(self.class_weights):
-             class_loss = class_loss * self.class_weights
-        class_loss = class_loss.mean()
+        target_classes = targets[..., 1:-2]  
+        target_classes = target_classes.argmax(dim=-1)
+        target_classes[targets[..., 1:-2].sum(dim=-1) == 0] = self.ignore_index
+        target_classes = target_classes.reshape(-1)
+        best_pred_proba = best_pred_proba.reshape(-1, best_pred_proba.shape[-1])
+        class_loss = self.ce_loss_fn(best_pred_proba, target_classes)
         
         # accuracy, precision, recall
-        if target_classes.max() != 0:
-            pred_labels = best_pred_proba.detach().argmax(dim=-1).cpu().numpy()
-            target_labels = target_classes.argmax(dim=-1).cpu().numpy()
+        if target_classes.max() > 0:
+            pred_labels = best_pred_proba.detach().argmax(dim=-1)[target_classes != self.ignore_index].cpu().numpy()
+            target_labels = target_classes[target_classes != self.ignore_index].cpu().numpy()
             accuracy = accuracy_score(target_labels, pred_labels)
             f1 = f1_score(target_labels, pred_labels, average="macro")
             precision = precision_score(target_labels, pred_labels, average="macro")    

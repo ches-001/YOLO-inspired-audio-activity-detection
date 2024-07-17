@@ -151,6 +151,7 @@ class AudioDataset(Dataset):
         label_weights = label_weights.sum() / (label_weights.shape[0] * label_weights)
         return label_weights
 
+
     def _index_samples(self, annotations: Dict[str, Any]):
         self._samples = []
         unique_classes = []
