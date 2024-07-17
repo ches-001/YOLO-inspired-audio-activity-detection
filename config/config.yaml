@@ -68,6 +68,7 @@ train_config:
     sm_loss_w: 0.333333
     md_loss_w: 0.333333
     lg_loss_w: 0.333333
+    ignore_conf_threshold: 0.5
 
   optimizer_config:
     lr: 0.001
