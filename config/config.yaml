@@ -60,7 +60,7 @@ train_config:
   epochs: 180
 
   loss_config:
-    label_smoothing: 0.05
+    label_smoothing: 0.005
     iou_confidence: false
     class_loss_w: 1.0
     conf_loss_w: 1.0
