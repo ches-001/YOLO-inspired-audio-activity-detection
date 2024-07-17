@@ -71,22 +71,21 @@ class AudioDetectionLoss(nn.Module):
         noobj_pred_mask = noobj_pred_mask.scatter(2, best_anchoridx.unsqueeze(-1), False)
         noobj_preds = preds[noobj_pred_mask].reshape(*preds.shape[:2], 2, -1)
 
-        # target objectness scores (1 if object, 0 if no object)
-        target_objectness = targets[..., :1]
+        # target confidence scores (1 if object, 0 if no object)
+        target_confidence = targets[..., :1]
         best_anchoridx = best_anchoridx.unsqueeze(-1).unsqueeze(-1)
         best_anchoridx = best_anchoridx.expand(*preds.shape[0:2], -1, preds.shape[-1])
         best_preds = torch.gather(preds, dim=2, index=best_anchoridx)
         best_preds = best_preds.squeeze(dim=2)
 
         # segment center and duration loss
-        ciou_loss = 1 - ious_max.unsqueeze(-1)[target_objectness == 1].mean()
+        ciou_loss = 1 - ious_max.unsqueeze(-1)[target_confidence == 1].mean()
 
-        # confidence / objectness loss
-        noobj_pred_objectness = noobj_preds[..., :1]
-        target_confidence = targets[..., :1]
+        # confidence loss
+        noobj_pred_confidence = noobj_preds[..., :1]
         best_preds_confidence = best_preds[..., :1]
-        noobj_target_objectness = torch.zeros_like(
-             noobj_pred_objectness, dtype=noobj_preds.dtype, device=noobj_preds.device
+        noobj_target_confidence = torch.zeros_like(
+             noobj_pred_confidence, dtype=noobj_preds.dtype, device=noobj_preds.device
         )
         # target confidence can either be 1 where an audio segment is present and 0s where
         # no audio segment is, or (1 x IoU) where an audio segment is present and (0 x IoU)
@@ -95,11 +94,11 @@ class AudioDetectionLoss(nn.Module):
         # regularisation technique, akin to label smoothening.
         if self.iou_confidence:
              target_confidence = target_confidence * ious_max.unsqueeze(-1)
-        comp_pred_conf = torch.cat([best_preds_confidence.unsqueeze(-1), noobj_pred_objectness], dim=-2)
-        comp_target_conf = torch.cat([target_confidence.unsqueeze(-1), noobj_target_objectness], dim=-2)
+        comp_pred_conf = torch.cat([best_preds_confidence.unsqueeze(-1), noobj_pred_confidence], dim=-2)
+        comp_target_conf = torch.cat([target_confidence.unsqueeze(-1), noobj_target_confidence], dim=-2)
         num_pos = target_confidence[target_confidence > 0].shape[0]
         num_neg = target_confidence[target_confidence == 0].shape[0]
-        num_neg += noobj_target_objectness[noobj_target_objectness == 0].shape[0]
+        num_neg += noobj_target_confidence[noobj_target_confidence == 0].shape[0]
         pos_weight = torch.tensor([num_neg / (num_pos + 1e-10)], device=preds.device)
         obj_loss = F.binary_cross_entropy_with_logits(
             comp_pred_conf, comp_target_conf, reduction="mean", pos_weight=pos_weight
@@ -109,7 +108,7 @@ class AudioDetectionLoss(nn.Module):
         best_pred_proba = best_preds[..., 1:-2].flatten(0, -2)
         all_pred_proba = preds[..., 1:-2].flatten(0, -2)
         target_classes = targets[..., 1:2].clone()
-        target_classes[target_objectness == 0] = self.ignore_index
+        target_classes[target_confidence == 0] = self.ignore_index
         # despite the fact that only one of the 3 anchor boxes can be valid, we still need the model to have
         # the same set of class probability scores per cell regardless of the number of boxes being predicted
         # by that cell. As such we tile the target class labels from shape (N, ncells, 1) to (N, ncells, 3)

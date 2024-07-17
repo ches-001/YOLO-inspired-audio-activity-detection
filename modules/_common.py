@@ -11,7 +11,7 @@ class ConvBNorm(nn.Module):
             kernel_size: int, 
             stride: int=1, 
             padding: Optional[int]=None,
-            activation: Optional[Type] = nn.GELU
+            activation: Optional[Type]=None
         ):
         super(ConvBNorm, self).__init__()
 
