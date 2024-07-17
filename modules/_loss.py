@@ -61,10 +61,11 @@ class AudioDetectionLoss(nn.Module):
         return loss, metrics_dict
 
 
-    def loss_fn(self, preds: torch.Tensor, targets: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, float]]:
+    def loss_fn(self, preds: torch.Tensor, targets: torch.Tensor, e: float=1e-15) -> Tuple[torch.Tensor, Dict[str, float]]:
         assert preds.ndim == targets.ndim + 1
+        _device = preds.device
         # sm_pred: (S x 3 x (3 + C))     sm_target: (S, 4)
-        ious_per_anchors = AudioDetectionLoss.compute_ciou(preds[..., -2:], targets[..., -2:])
+        ious_per_anchors = AudioDetectionLoss.compute_ciou(preds[..., -2:], targets[..., -2:], e=e)
         ious_max, best_anchoridx = torch.max(ious_per_anchors, dim=-1)
 
         noobj_pred_mask = torch.ones_like(preds[..., 0], dtype=torch.bool)
@@ -85,7 +86,7 @@ class AudioDetectionLoss(nn.Module):
         noobj_pred_confidence = noobj_preds[..., :1]
         best_preds_confidence = best_preds[..., :1]
         noobj_target_confidence = torch.zeros_like(
-             noobj_pred_confidence, dtype=noobj_preds.dtype, device=noobj_preds.device
+             noobj_pred_confidence, dtype=noobj_preds.dtype, device=_device
         )
         # target confidence can either be 1 where an audio segment is present and 0s where
         # no audio segment is, or (1 x IoU) where an audio segment is present and (0 x IoU)
@@ -99,7 +100,7 @@ class AudioDetectionLoss(nn.Module):
         num_pos = target_confidence[target_confidence > 0].shape[0]
         num_neg = target_confidence[target_confidence == 0].shape[0]
         num_neg += noobj_target_confidence[noobj_target_confidence == 0].shape[0]
-        pos_weight = torch.tensor([num_neg / (num_pos + 1e-10)], device=preds.device)
+        pos_weight = torch.tensor([num_neg / (num_pos + e)], device=_device)
         conf_loss = F.binary_cross_entropy_with_logits(
             comp_pred_conf, comp_target_conf, reduction="mean", pos_weight=pos_weight
         )
@@ -107,16 +108,32 @@ class AudioDetectionLoss(nn.Module):
         # class loss
         best_pred_proba = best_preds[..., 1:-2]
         target_classes = targets[..., 1:-2]  
-        target_classes = target_classes.argmax(dim=-1)
-        target_classes[targets[..., 1:-2].sum(dim=-1) == 0] = self.ignore_index
-        target_classes = target_classes.reshape(-1)
+        target_classes[target_classes == 1] = (
+            (1 - self.label_smoothing) * 
+            (target_classes[target_classes == 1] + (self.label_smoothing / best_pred_proba.shape[-1]))
+        )
+        pos_weight = (
+            target_classes[target_classes > 0].shape[0] /
+            (target_classes[target_classes == 0].shape[0] + 1e-10)
+        )
+        pos_weight = torch.tensor(pos_weight, device=_device)
+        class_loss = F.binary_cross_entropy_with_logits(
+            best_pred_proba, target_classes, reduction="none", pos_weight=pos_weight
+        )
+        if torch.is_tensor(self.class_weights):
+            class_loss = (class_loss * self.class_weights)
+        class_loss = class_loss.mean()
+        target_classes_idx = target_classes.argmax(dim=-1)
+        target_classes_idx[targets[..., 1:-2].sum(dim=-1) == 0] = self.ignore_index
+        target_classes_idx = target_classes_idx.reshape(-1)
         best_pred_proba = best_pred_proba.reshape(-1, best_pred_proba.shape[-1])
-        class_loss = self.ce_loss_fn(best_pred_proba, target_classes)
+        # class_loss = self.ce_loss_fn(best_pred_proba, target_classes_idx)
         
         # accuracy, precision, recall
         if target_classes.max() > 0:
-            pred_labels = best_pred_proba.detach().argmax(dim=-1)[target_classes != self.ignore_index].cpu().numpy()
-            target_labels = target_classes[target_classes != self.ignore_index].cpu().numpy()
+            _mask = target_classes_idx != self.ignore_index
+            pred_labels = best_pred_proba.detach().argmax(dim=-1)[_mask].cpu().numpy()
+            target_labels = target_classes_idx[_mask].cpu().numpy()
             accuracy = accuracy_score(target_labels, pred_labels)
             f1 = f1_score(target_labels, pred_labels, average="macro")
             precision = precision_score(target_labels, pred_labels, average="macro")    
@@ -127,8 +144,8 @@ class AudioDetectionLoss(nn.Module):
         # aggregate losses
         loss = (
              (self.conf_loss_w * conf_loss) + 
-             (self.ciou_loss_w * (ciou_loss) if ciou_loss == ciou_loss else torch.tensor(0.0, device=ciou_loss.device)) + 
-             (self.class_loss_w * (class_loss) if class_loss == class_loss else torch.tensor(0.0, device=class_loss.device))
+             (self.ciou_loss_w * (ciou_loss) if ciou_loss == ciou_loss else torch.tensor(0.0, device=_device)) + 
+             (self.class_loss_w * (class_loss) if class_loss == class_loss else torch.tensor(0.0, device=_device))
         )
         metrics_dict = {}
         metrics_dict["mean_ciou"] = 1 - ciou_loss.item()
@@ -144,22 +161,23 @@ class AudioDetectionLoss(nn.Module):
     def compute_ciou(preds_cw: torch.Tensor, targets_cw: torch.Tensor, e: float=1e-15, _h: float=10.0) -> torch.Tensor:
         # preds_cw: (S x 3 x 2)     targets_cw: (S x 2) | (S x 1 x 2)
         assert (preds_cw.ndim == targets_cw.ndim + 1) or (preds_cw.ndim == targets_cw.ndim)
+        _device = preds_cw.device
         if targets_cw.ndim != preds_cw.ndim:
                 targets_cw = targets_cw.unsqueeze(dim=-2)
 
         pred_c = preds_cw[..., :1]
         pred_w = preds_cw[..., -1:]
-        pred_h = torch.ones_like(pred_w, device=pred_w.device) * _h
+        pred_h = torch.ones_like(pred_w, device=_device) * _h
         pred_x1 = pred_c - (pred_w / 2)
-        pred_y1 = torch.zeros_like(pred_x1, device=pred_x1.device)
+        pred_y1 = torch.zeros_like(pred_x1, device=_device)
         pred_x2 = pred_c + (pred_w / 2)
         pred_y2 = pred_h
 
         target_c = targets_cw[..., :1]
         target_w = targets_cw[..., -1:]
-        target_h = torch.ones_like(target_w, device=target_w.device) * _h
+        target_h = torch.ones_like(target_w, device=_device) * _h
         target_x1 = target_c - (target_w / 2)
-        target_y1 = torch.zeros_like(target_x1, device=target_x1.device)
+        target_y1 = torch.zeros_like(target_x1, device=_device)
         target_x2 = target_c + (target_w / 2)
         target_y2 = target_h
 
