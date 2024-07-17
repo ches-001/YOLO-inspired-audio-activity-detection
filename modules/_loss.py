@@ -97,11 +97,9 @@ class AudioDetectionLoss(nn.Module):
             obj_target_confidence = obj_target_confidence * ious_max.unsqueeze(-1)
         pos_mask = obj_target_confidence > 0
         noobj_comp_mask = iou_sub <= self.ignore_conf_threshold
-        pos_weight = (
-             obj_target_confidence[torch.bitwise_not(pos_mask)].shape[0] /
-            (obj_target_confidence[pos_mask].shape[0] + e)
-        )
-        pos_weight = torch.tensor(pos_weight, device=_device)
+        num_neg = obj_target_confidence[torch.bitwise_not(pos_mask)].shape[0] + noobj_comp_mask.sum()
+        num_pos = obj_target_confidence[pos_mask].shape[0]
+        pos_weight = torch.tensor(num_neg / (num_pos + e), device=_device)
         noobj_conf_loss = F.binary_cross_entropy_with_logits(
             noobj_pred_confidence[noobj_comp_mask], noobj_target_confidence[noobj_comp_mask], reduction="none"
         )
