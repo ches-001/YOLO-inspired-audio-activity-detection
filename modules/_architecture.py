@@ -64,6 +64,25 @@ class AudioDetectionNetwork(nn.Module):
             self.feature_extractor.fmap4_ch,
             out_channels=self.out_channels
         )
+        sm_ch = 120 * self.config["num_anchors"]
+        self.sm_conf_layer = nn.Sequential(
+            nn.Flatten(start_dim=1, end_dim=-2),
+            nn.Conv1d(sm_ch, sm_ch, kernel_size=1),
+            nn.BatchNorm1d(sm_ch),
+            nn.Conv1d(sm_ch, sm_ch, kernel_size=num_classes+3),
+        )
+        self.md_conf_layer = nn.Sequential(
+            nn.Flatten(start_dim=1, end_dim=-2),
+            nn.Conv1d(sm_ch//2, sm_ch//2, kernel_size=1),
+            nn.BatchNorm1d(sm_ch//2),
+            nn.Conv1d(sm_ch//2, sm_ch//2, kernel_size=num_classes+3),
+        )
+        self.lg_conf_layer = nn.Sequential(
+            nn.Flatten(start_dim=1, end_dim=-2),
+            nn.Conv1d(sm_ch//4, sm_ch//4, kernel_size=1),
+            nn.BatchNorm1d(sm_ch//4),
+            nn.Conv1d(sm_ch//4, sm_ch//4, kernel_size=num_classes+3),
+        )
         self.apply(self.xavier_init_weights)
 
     def forward(
@@ -113,9 +132,9 @@ class AudioDetectionNetwork(nn.Module):
         lg_scale = lg_scale.reshape(batch_size, num_lg_segments, num_lg_anchors, -1)
 
         # first index corresponds to objectness of each box
-        sm_objectness = sm_scale[..., :1]
-        md_objectness = md_scale[..., :1]
-        lg_objectness = lg_scale[..., :1]
+        sm_objectness = self.sm_conf_layer(sm_scale).reshape(*sm_scale[..., :1].shape)
+        md_objectness = self.md_conf_layer(md_scale).reshape(*md_scale[..., :1].shape)
+        lg_objectness = self.lg_conf_layer(lg_scale).reshape(*lg_scale[..., :1].shape)
 
         # next `num_class` indexes correspond to class probabilities of each bbox
         sm_class_proba = sm_scale[..., 1:1+self.num_classes]
