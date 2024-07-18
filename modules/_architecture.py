@@ -67,19 +67,16 @@ class AudioDetectionNetwork(nn.Module):
         sm_ch = 120 * self.config["num_anchors"]
         self.sm_conf_layer = nn.Sequential(
             nn.Flatten(start_dim=1, end_dim=-2),
-            nn.Conv1d(sm_ch, sm_ch, kernel_size=1),
             nn.BatchNorm1d(sm_ch),
             nn.Conv1d(sm_ch, sm_ch, kernel_size=num_classes+3),
         )
         self.md_conf_layer = nn.Sequential(
             nn.Flatten(start_dim=1, end_dim=-2),
-            nn.Conv1d(sm_ch//2, sm_ch//2, kernel_size=1),
             nn.BatchNorm1d(sm_ch//2),
             nn.Conv1d(sm_ch//2, sm_ch//2, kernel_size=num_classes+3),
         )
         self.lg_conf_layer = nn.Sequential(
             nn.Flatten(start_dim=1, end_dim=-2),
-            nn.Conv1d(sm_ch//4, sm_ch//4, kernel_size=1),
             nn.BatchNorm1d(sm_ch//4),
             nn.Conv1d(sm_ch//4, sm_ch//4, kernel_size=num_classes+3),
         )
