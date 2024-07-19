@@ -128,30 +128,14 @@ class RepVGGBlock(nn.Module):
         if hasattr(self, "conv1x1"): self.__delattr__("conv1x1")   
         if hasattr(self, "identity"): self.__delattr__("identity")
         self.inference_mode = True
-
-
-class BottleRep(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, hidden_channels: int=128):
-        super(BottleRep, self).__init__()
-        self.conv1 = RepVGGBlock(in_channels, hidden_channels)
-        self.conv2 = RepVGGBlock(hidden_channels, out_channels)
-        self.res_conn = in_channels == out_channels
-        self.alpha = nn.Parameter(torch.ones(1))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = self.conv1(x)
-        out = self.conv2(out)
-        if self.res_conn:
-            out = out + (self.alpha * x)
-        return out
         
 
 class RepBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, n: int=2):
         super(RepBlock, self).__init__()
-        self.conv1 = BottleRep(in_channels, out_channels)
+        self.conv1 = RepVGGBlock(in_channels, out_channels)
         if n > 1:
-            self.blocks = nn.Sequential(*[BottleRep(out_channels, out_channels) for i in range(n-1)])
+            self.blocks = nn.Sequential(*[RepVGGBlock(out_channels, out_channels) for i in range(n-1)])
         else:
             self.blocks = nn.Identity()
 
