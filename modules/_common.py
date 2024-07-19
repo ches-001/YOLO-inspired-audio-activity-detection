@@ -48,13 +48,14 @@ class RepVGGBlock(nn.Module):
             out_channels: int, 
             activation: Optional[Type]=nn.GELU, 
             stride: Union[int, Tuple[int, int]]=1,
-            padding: Optional[Union[int, Tuple[int, int]]]=None
+            padding: Optional[Union[int, Tuple[int, int]]]=None,
         ):
         super(RepVGGBlock, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.stride = stride
         self.padding = padding or 3//2
+        self.inference_mode = False
 
         self.conv3x3 = ConvBNorm(
             in_channels, out_channels, kernel_size=(3, 3), stride=stride, padding=self.padding, bias=False
@@ -72,6 +73,9 @@ class RepVGGBlock(nn.Module):
             self.activation = nn.Identity()
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if hasattr(self, "conv_reparam"):
+            return self.activation(self.conv_reparam(x))
+        
         out = self.conv3x3(x) + self.conv1x1(x)
         if not isinstance(self.identity, nn.Identity):
             out = out + self.identity(x)
@@ -112,7 +116,45 @@ class RepVGGBlock(nn.Module):
         weight_n = (gamma / std).reshape(-1, *([1]*(len(w.shape)-1))) * w
         bias_n = ((-mu * gamma) / std) + beta
         return weight_n, bias_n
+    
+    def toggle_inference_mode(self):
+        w, b = self.reparameterize()
+        self.conv_reparam = nn.Conv2d(
+            self.in_channels, self.out_channels, kernel_size=(3, 3), stride=self.stride, padding=self.padding
+        )
+        self.conv_reparam.weight.data = w
+        self.conv_reparam.bias.data = b
+        if hasattr(self, "conv3x3"): self.__delattr__("conv3x3")    
+        if hasattr(self, "conv1x1"): self.__delattr__("conv1x1")   
+        if hasattr(self, "identity"): self.__delattr__("identity")
+        self.inference_mode = True
 
+
+class BottleRep(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, hidden_channels: int=128):
+        super(BottleRep, self).__init__()
+        self.conv1 = RepVGGBlock(in_channels, hidden_channels)
+        self.conv2 = RepVGGBlock(hidden_channels, out_channels)
+        self.res_conn = in_channels == out_channels
+        self.alpha = nn.Parameter(torch.ones(1))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        outputs = self.conv2(self.conv1(x))
+        return outputs + (self.alpha * x) if self.res_conn else outputs
+    
+
+class RepBlock(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, n: int=2):
+        super(RepBlock, self).__init__()
+        self.conv1 = BottleRep(in_channels, out_channels)
+        if n > 1:
+            self.blocks = nn.Sequential(*[BottleRep(out_channels, out_channels) for i in range(n-1)])
+        else:
+            self.blocks = nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.blocks(self.conv1(x))
+    
 
 class BiCModule(nn.Module):
     def __init__(
@@ -182,14 +224,14 @@ class MultiScaleFmapModule(nn.Module):
     ):
         super(MultiScaleFmapModule, self).__init__()
 
-        c_h = 64
+        c_h = 128
         self.cspsppf = CSPSPPFModule(fmap4_channels, c_h)
         self.bic2 = BiCModule(fmap2_channels, fmap1_channels, c_h, c_h)
         self.bic3 = BiCModule(fmap3_channels, fmap2_channels, c_h, c_h)
-        self.rep_block2_1 = RepVGGBlock(c_h, out_channels)
-        self.rep_block3_1 = RepVGGBlock(c_h, c_h)
-        self.rep_block3_2 = RepVGGBlock(c_h*2, out_channels)
-        self.rep_block4_1 = RepVGGBlock(c_h*2, out_channels)
+        self.rep_block2_1 = RepBlock(c_h, out_channels)
+        self.rep_block3_1 = RepBlock(c_h, c_h)
+        self.rep_block3_2 = RepBlock(c_h*2, out_channels)
+        self.rep_block4_1 = RepBlock(c_h*2, out_channels)
         self.identity = nn.Identity()
         self.conv2_downsample = ConvBNorm(out_channels, c_h, kernel_size=3, stride=(1, 2))
         self.conv3_downsample = ConvBNorm(out_channels, c_h, kernel_size=3, stride=(1, 2))
@@ -202,11 +244,11 @@ class MultiScaleFmapModule(nn.Module):
         fmap4: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         p4 = self.cspsppf(fmap4)
-        p3 = self._run_repblock(self.rep_block3_1, self.bic3(fmap3, fmap2, p4))
-        p2 = self._run_repblock(self.rep_block2_1, self.bic2(fmap2, fmap1, p3))
+        p3 = self.rep_block3_1(self.bic3(fmap3, fmap2, p4))
+        p2 = self.rep_block2_1(self.bic2(fmap2, fmap1, p3))
         n2 = self.identity(p2)
-        n3 = self._run_repblock(self.rep_block3_2, torch.cat((p3, self.conv2_downsample(n2)), dim=1))
-        n4 = self._run_repblock(self.rep_block4_1, torch.cat((p4, self.conv3_downsample(n3)), dim=1))
+        n3 = self.rep_block3_2(torch.cat((p3, self.conv2_downsample(n2)), dim=1))
+        n4 = self.rep_block3_2(torch.cat((p4, self.conv3_downsample(n3)), dim=1))
         n2 = nn.functional.adaptive_avg_pool2d(n2, output_size=(1, n2.shape[-1]))
         n3 = nn.functional.adaptive_avg_pool2d(n3, output_size=(1, n3.shape[-1]))
         n4 = nn.functional.adaptive_avg_pool2d(n4, output_size=(1, n4.shape[-1]))
@@ -214,11 +256,3 @@ class MultiScaleFmapModule(nn.Module):
         n3 = n3.squeeze(dim=2).permute(0, 2, 1)
         n4 = n4.squeeze(dim=2).permute(0, 2, 1)
         return n2, n3, n4
-    
-    def _run_repblock(self, repblock: RepVGGBlock, x: torch.Tensor) -> torch.Tensor:
-        if not self.training:
-            w, b = repblock.reparameterize()
-            return repblock.activation(
-                F.conv2d(x, weight=w, bias=b, stride=repblock.stride, padding=repblock.padding)
-            )
-        return repblock(x)

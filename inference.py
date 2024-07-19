@@ -31,7 +31,7 @@ def load_model_weights(model: AudioDetectionNetwork, model_path: str, device: st
     model.to(device)
     model.init_zeros_taper_window(model_weights["taper_window"])
     model.load_state_dict(model_weights)
-    model.eval()
+    model.inference()
 
 
 def get_annotation_label_map(annotations_path: str) -> Dict[int, str]:

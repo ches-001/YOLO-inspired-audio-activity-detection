@@ -2,9 +2,8 @@ import yaml
 import torch
 import torchaudio
 import torch.nn as nn
-from torchvision.models import resnet
 from ._backbone import CustomBackBone, ResNetBackBone
-from ._common import MultiScaleFmapModule
+from ._common import RepVGGBlock, MultiScaleFmapModule
 from typing import *
 
 
@@ -162,6 +161,10 @@ class AudioDetectionNetwork(nn.Module):
             nn.init.xavier_uniform_(m.weight)
             if torch.is_tensor(m.bias):
                 m.bias.data.fill_(0.01)
+
+    def inference(self):
+        self.eval()
+        self.apply(lambda m : m.toggle_inference_mode() if isinstance(m, RepVGGBlock) else ...)
     
     @staticmethod
     def scale_input(x: torch.Tensor, e: float=1e-8) -> torch.Tensor:
