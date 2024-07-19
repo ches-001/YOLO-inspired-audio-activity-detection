@@ -155,6 +155,7 @@ def run(config: Dict[str, Any]):
 
 
 if __name__ == "__main__":
+    # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
     # torch.autograd.set_detect_anomaly(True)
     config = load_config()
     run(config)

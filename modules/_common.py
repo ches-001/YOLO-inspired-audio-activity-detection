@@ -139,9 +139,12 @@ class BottleRep(nn.Module):
         self.alpha = nn.Parameter(torch.ones(1))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        outputs = self.conv2(self.conv1(x))
-        return outputs + (self.alpha * x) if self.res_conn else outputs
-    
+        out = self.conv1(x)
+        out = self.conv2(out)
+        if self.res_conn:
+            out = out + (self.alpha * x)
+        return out
+        
 
 class RepBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, n: int=2):
