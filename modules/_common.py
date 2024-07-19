@@ -230,6 +230,11 @@ class MultiScaleFmapModule(nn.Module):
         fmap3: torch.Tensor, 
         fmap4: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if fmap1.shape[-2] != fmap2.shape[-2] != fmap3.shape[-2] != fmap4.shape[-2]:
+            fmap1 = nn.functional.adaptive_avg_pool2d(fmap1, output_size=(1, fmap1.shape[-1]))
+            fmap2 = nn.functional.adaptive_avg_pool2d(fmap2, output_size=(1, fmap2.shape[-1]))
+            fmap3 = nn.functional.adaptive_avg_pool2d(fmap3, output_size=(1, fmap3.shape[-1]))
+            fmap4 = nn.functional.adaptive_avg_pool2d(fmap4, output_size=(1, fmap4.shape[-1]))
         p4 = self.cspsppf(fmap4)
         p3 = self.rep_block3_1(self.bic3(fmap3, fmap2, p4))
         p2 = self.rep_block2_1(self.bic2(fmap2, fmap1, p3))
