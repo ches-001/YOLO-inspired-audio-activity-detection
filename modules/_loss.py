@@ -17,7 +17,8 @@ class AudioDetectionLoss(nn.Module):
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
         iou_confidence: bool=False,
-        ignore_conf_threshold: float=0.5,
+        iou_gt_threshold: float=0.5,
+        conf_ivb_lt_threshold: float=0.5,
         scale_t: Optional[int]=None,
         ignore_index: int=-100
     ):
@@ -30,7 +31,8 @@ class AudioDetectionLoss(nn.Module):
         self.class_loss_w = class_loss_w
         self.class_weights = class_weights
         self.label_smoothing = label_smoothing
-        self.ignore_conf_threshold = ignore_conf_threshold
+        self.iou_gt_threshold = iou_gt_threshold
+        self.conf_ivb_lt_threshold = conf_ivb_lt_threshold
         self.iou_confidence = iou_confidence
         self.scale_t = scale_t if scale_t else 1
         self.ignore_index = ignore_index
@@ -86,6 +88,8 @@ class AudioDetectionLoss(nn.Module):
         iou_sub = ious_per_anchors[iou_sub_mask].reshape(*ious_per_anchors.shape[:2], 2)
         noobj_pred_confidence = preds[noobj_pred_mask].reshape(*preds.shape[:2], 2, -1)[..., 0]
         noobj_target_confidence = torch.zeros_like(noobj_pred_confidence, device=_device)
+        noobj_thresholding_mask = iou_sub <= self.iou_gt_threshold
+        noobj_pred_confidence = torch.where(noobj_thresholding_mask, noobj_pred_confidence, noobj_target_confidence)
         obj_pred_confidence = best_preds[..., :1]
         obj_target_confidence = valid_confidence
         # target confidence can either be 1 where an audio segment is present and 0s where
@@ -96,17 +100,20 @@ class AudioDetectionLoss(nn.Module):
         if self.iou_confidence:
             obj_target_confidence = obj_target_confidence * ious_max.unsqueeze(-1)
         pos_mask = obj_target_confidence > 0
-        noobj_comp_mask = iou_sub <= self.ignore_conf_threshold
-        num_neg = obj_target_confidence[torch.bitwise_not(pos_mask)].shape[0] + noobj_comp_mask.sum()
+        num_neg = obj_target_confidence[torch.bitwise_not(pos_mask)].shape[0] + noobj_thresholding_mask.sum()
         num_pos = obj_target_confidence[pos_mask].shape[0]
         pos_weight = torch.tensor(num_neg / (num_pos + e), device=_device)
-        noobj_conf_loss = F.binary_cross_entropy_with_logits(
-            noobj_pred_confidence[noobj_comp_mask], noobj_target_confidence[noobj_comp_mask], reduction="none"
-        )
-        obj_conf_loss = F.binary_cross_entropy_with_logits(
-            obj_pred_confidence, obj_target_confidence, pos_weight=pos_weight, reduction="none"
-        )
-        conf_loss = torch.cat([noobj_conf_loss, obj_conf_loss.reshape(-1)]).mean()
+        noobj_conf_loss1 = F.binary_cross_entropy(noobj_pred_confidence, noobj_target_confidence, reduction="none")
+        objnoobj_conf_loss = F.binary_cross_entropy(obj_pred_confidence, obj_target_confidence, reduction="none")
+        obj_mask = obj_target_confidence > 0
+        _zeros = torch.zeros_like(objnoobj_conf_loss, device=_device)
+        obj_conf_loss = torch.where(obj_mask, objnoobj_conf_loss, _zeros) * pos_weight
+        noobj_conf_loss2 = torch.where(torch.bitwise_not(obj_mask), objnoobj_conf_loss, _zeros)
+        _zeros = torch.zeros_like(noobj_conf_loss1, device=_device)
+        noobj_conf_loss1 = torch.where(noobj_pred_confidence>self.conf_ivb_lt_threshold, noobj_conf_loss1, _zeros)
+        _zeros = torch.zeros_like(noobj_conf_loss2, device=_device)
+        noobj_conf_loss2 = torch.where(obj_pred_confidence>self.conf_ivb_lt_threshold, noobj_conf_loss2, _zeros)
+        conf_loss = torch.cat([obj_conf_loss, noobj_conf_loss1, noobj_conf_loss2], dim=-1).mean()
 
         # class loss
         best_pred_proba = best_preds[..., 1:-2]
@@ -119,9 +126,9 @@ class AudioDetectionLoss(nn.Module):
         
         # accuracy, precision, recall
         if target_classes.max() > 0:
-            _mask = target_classes_idx != self.ignore_index
-            pred_labels = best_pred_proba.detach().argmax(dim=-1)[_mask].cpu().numpy()
-            target_labels = target_classes_idx[_mask].cpu().numpy()
+            ignore_idx_mask = target_classes_idx != self.ignore_index
+            pred_labels = best_pred_proba.detach().argmax(dim=-1)[ignore_idx_mask].cpu().numpy()
+            target_labels = target_classes_idx[ignore_idx_mask].cpu().numpy()
             accuracy = accuracy_score(target_labels, pred_labels)
             f1 = f1_score(target_labels, pred_labels, average="macro")
             precision = precision_score(target_labels, pred_labels, average="macro")    

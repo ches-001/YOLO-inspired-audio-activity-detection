@@ -46,7 +46,7 @@ sample_duration: 60
 taper_input: true
 taper_window: hann
 backbone: "custom"
-block_layers: [3, 4, 6, 3]
+block_layers: [1, 1, 1, 1]
 dropout: 0.5
 
 resnet_config:
@@ -61,7 +61,7 @@ train_config:
 
   loss_config:
     label_smoothing: 0.005
-    iou_confidence: false
+    iou_confidence: true
     class_loss_w: 1.0
     conf_loss_w: 1.0
     ciou_loss_w: 1.0
@@ -69,6 +69,7 @@ train_config:
     md_loss_w: 0.333333
     lg_loss_w: 0.333333
     ignore_conf_threshold: 0.5
+    conf_ivb_lt_threshold: 0.5
 
   optimizer_config:
     lr: 0.001

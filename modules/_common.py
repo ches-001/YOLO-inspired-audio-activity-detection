@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import *
 
 
@@ -8,10 +9,11 @@ class ConvBNorm(nn.Module):
             self, 
             in_channels: int, 
             out_channels: int, 
-            kernel_size: int, 
-            stride: int=1, 
-            padding: Optional[int]=None,
-            activation: Optional[Type]=nn.GELU
+            kernel_size: Union[int, Tuple[int, int]], 
+            stride: Union[int, Tuple[int, int]]=1, 
+            padding: Optional[Union[int, Tuple[int, int]]]=None,
+            activation: Optional[Type]=nn.GELU,
+            bias: bool=True,
         ):
         super(ConvBNorm, self).__init__()
 
@@ -19,11 +21,12 @@ class ConvBNorm(nn.Module):
             padding = kernel_size // 2
 
         self.conv = nn.Conv2d(
-            in_channels, 
+            in_channels,
             out_channels, 
             kernel_size=kernel_size, 
-            stride=(1, stride), 
-            padding=padding
+            stride=stride, 
+            padding=padding,
+            bias=bias
         )
         self.batchnorm = nn.BatchNorm2d(out_channels)
         self.activation = None
@@ -37,6 +40,79 @@ class ConvBNorm(nn.Module):
             x = self.activation(x)
         return x
     
+
+class RepVGGBlock(nn.Module):
+    def __init__(
+            self, 
+            in_channels: int, 
+            out_channels: int, 
+            activation: Optional[Type]=nn.GELU, 
+            stride: Union[int, Tuple[int, int]]=1,
+            padding: Optional[Union[int, Tuple[int, int]]]=None
+        ):
+        super(RepVGGBlock, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.stride = stride
+        self.padding = padding or 3//2
+
+        self.conv3x3 = ConvBNorm(
+            in_channels, out_channels, kernel_size=(3, 3), stride=stride, padding=self.padding, bias=False
+        )
+        self.conv1x1 = ConvBNorm(
+            in_channels, out_channels, kernel_size=(1, 1), stride=stride, padding=self.padding-1, bias=False
+        )
+        if stride == 1 and in_channels == out_channels:
+            self.identity = nn.BatchNorm2d(out_channels)
+        else:
+            self.identity = nn.Identity()
+        if activation:
+            self.activation = activation()
+        else:
+            self.activation = nn.Identity()
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = self.conv3x3(x) + self.conv1x1(x)
+        if not isinstance(self.identity, nn.Identity):
+            out = out + self.identity(x)
+        if self.activation:
+            out = self.activation(out)
+        return out
+    
+    def reparameterize(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        w3x3, b3x3 = self._merge_conv_bn(self.conv3x3.conv, self.conv3x3.batchnorm)
+        w1x1, b1x1 = self._merge_conv_bn(self.conv1x1.conv, self.conv1x1.batchnorm)
+        w = w3x3 + F.pad(w1x1, [1, 1, 1, 1])
+        b = b3x3 + b1x1
+        if not isinstance(self.identity, nn.Identity):
+            wI1x1, bI1x1 = self._merge_conv_bn(nn.Identity(), self.identity)
+            w = w + F.pad(wI1x1, [1, 1, 1, 1])
+            b = b + bI1x1
+        return w, b
+    
+    def _merge_conv_bn(
+            self, 
+            conv: Union[nn.Conv2d, nn.Identity], 
+            bn: nn.BatchNorm2d,
+        ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if isinstance(conv, nn.Conv2d):
+            w = conv.weight
+        elif isinstance(conv, nn.Identity):
+            input_dim = self.in_channels//self.conv3x3.conv.groups
+            w = torch.zeros((self.in_channels, input_dim, 1, 1), device=self.conv3x3.conv.weight.device)
+            for i in range(self.in_channels):
+                w[i, i % input_dim, 0, 0] = 1
+        else: 
+            raise RuntimeError
+        gamma = bn.weight
+        mu = bn.running_mean
+        beta = bn.bias
+        eps = bn.eps
+        std = torch.sqrt(bn.running_var + eps)
+        weight_n = (gamma / std).reshape(-1, *([1]*(len(w.shape)-1))) * w
+        bias_n = ((-mu * gamma) / std) + beta
+        return weight_n, bias_n
+
 
 class BiCModule(nn.Module):
     def __init__(
@@ -110,13 +186,13 @@ class MultiScaleFmapModule(nn.Module):
         self.cspsppf = CSPSPPFModule(fmap4_channels, c_h)
         self.bic2 = BiCModule(fmap2_channels, fmap1_channels, c_h, c_h)
         self.bic3 = BiCModule(fmap3_channels, fmap2_channels, c_h, c_h)
-        self.rep_block2_1 = ConvBNorm(c_h, out_channels, kernel_size=3)
-        self.rep_block3_1 = ConvBNorm(c_h, c_h, kernel_size=3)
-        self.rep_block3_2 = ConvBNorm(c_h*2, out_channels, kernel_size=3)
-        self.rep_block4_1 = ConvBNorm(c_h*2, out_channels, kernel_size=3)
+        self.rep_block2_1 = RepVGGBlock(c_h, out_channels)
+        self.rep_block3_1 = RepVGGBlock(c_h, c_h)
+        self.rep_block3_2 = RepVGGBlock(c_h*2, out_channels)
+        self.rep_block4_1 = RepVGGBlock(c_h*2, out_channels)
         self.identity = nn.Identity()
-        self.conv2_downsample = ConvBNorm(out_channels, c_h, kernel_size=3, stride=2)
-        self.conv3_downsample = ConvBNorm(out_channels, c_h, kernel_size=3, stride=2)
+        self.conv2_downsample = ConvBNorm(out_channels, c_h, kernel_size=3, stride=(1, 2))
+        self.conv3_downsample = ConvBNorm(out_channels, c_h, kernel_size=3, stride=(1, 2))
     
     def forward(
         self, 
@@ -125,18 +201,24 @@ class MultiScaleFmapModule(nn.Module):
         fmap3: torch.Tensor, 
         fmap4: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        
-        fmap1 = nn.functional.adaptive_avg_pool2d(fmap1, output_size=(1, fmap1.shape[-1]))
-        fmap2 = nn.functional.adaptive_avg_pool2d(fmap2, output_size=(1, fmap2.shape[-1]))
-        fmap3 = nn.functional.adaptive_avg_pool2d(fmap3, output_size=(1, fmap3.shape[-1]))
-        fmap4 = nn.functional.adaptive_avg_pool2d(fmap4, output_size=(1, fmap4.shape[-1]))
         p4 = self.cspsppf(fmap4)
-        p3 = self.rep_block3_1(self.bic3(fmap3, fmap2, p4))
-        p2 = self.rep_block2_1(self.bic2(fmap2, fmap1, p3))
+        p3 = self._run_repblock(self.rep_block3_1, self.bic3(fmap3, fmap2, p4))
+        p2 = self._run_repblock(self.rep_block2_1, self.bic2(fmap2, fmap1, p3))
         n2 = self.identity(p2)
-        n3 = self.rep_block3_2(torch.cat((p3, self.conv2_downsample(n2)), dim=1))
-        n4 = self.rep_block4_1(torch.cat((p4, self.conv3_downsample(n3)), dim=1))
+        n3 = self._run_repblock(self.rep_block3_2, torch.cat((p3, self.conv2_downsample(n2)), dim=1))
+        n4 = self._run_repblock(self.rep_block4_1, torch.cat((p4, self.conv3_downsample(n3)), dim=1))
+        n2 = nn.functional.adaptive_avg_pool2d(n2, output_size=(1, n2.shape[-1]))
+        n3 = nn.functional.adaptive_avg_pool2d(n3, output_size=(1, n3.shape[-1]))
+        n4 = nn.functional.adaptive_avg_pool2d(n4, output_size=(1, n4.shape[-1]))
         n2 = n2.squeeze(dim=2).permute(0, 2, 1)
         n3 = n3.squeeze(dim=2).permute(0, 2, 1)
         n4 = n4.squeeze(dim=2).permute(0, 2, 1)
         return n2, n3, n4
+    
+    def _run_repblock(self, repblock: RepVGGBlock, x: torch.Tensor) -> torch.Tensor:
+        if not self.training:
+            w, b = repblock.reparameterize()
+            return repblock.activation(
+                F.conv2d(x, weight=w, bias=b, stride=repblock.stride, padding=repblock.padding)
+            )
+        return repblock(x)
