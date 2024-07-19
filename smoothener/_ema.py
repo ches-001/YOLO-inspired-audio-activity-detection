@@ -18,11 +18,12 @@ class EMAParamsSmoothener:
             ema_param.requires_grad_(False)
     
     def update(self):
+        self.num_updates += 1
         momentum = self.momentum_(self.num_updates)
         with torch.no_grad():
             for ema_param, param in zip(self.ema_model.parameters(), self.model.parameters()):
-                ema_param.data.mul_((1 - momentum)).add_(param.data, alpha=momentum)
-        self.num_updates += 1
+                if ema_param.dtype.is_floating_point:
+                    ema_param.data.mul_((1 - momentum)).add_(param.data, alpha=momentum)
 
     def get_ema_state_dict(self) -> Dict[str, Any]:
         return self.ema_model.state_dict()
