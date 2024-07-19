@@ -10,6 +10,7 @@ from datetime import datetime
 from torch.utils.data import DataLoader
 from dataset import AudioDataset
 from modules import AudioDetectionNetwork, AudioDetectionLoss
+from smoothener import EMAParamsSmoothener
 from pipeline import TrainerPipeline
 from typing import *
 
@@ -123,6 +124,11 @@ def run(config: Dict[str, Any]):
         block = config["resnet_config"]["block"]
         model_path = os.path.join(model_path, f"{backbone}_{block}_{blocks_str}")
         metrics_path = os.path.join(metrics_path, f"{backbone}_{block}_{blocks_str}")
+
+    use_ema = config["train_config"]["use_ema"]
+    ema_smoothener = None
+    if use_ema:
+        ema_smoothener = EMAParamsSmoothener(model, **config["train_config"]["ema_config"])
     trainer_pipeline = TrainerPipeline(
         model, 
         loss_fn, 
@@ -130,7 +136,8 @@ def run(config: Dict[str, Any]):
         model_path=model_path, 
         metrics_path=metrics_path, 
         annotation_filename=annotation_filename,
-        device=device
+        device=device,
+        ema_smoothener=ema_smoothener
     )
     verbose = config["train_config"]["verbose"]
     epochs = config["train_config"]["epochs"]

@@ -60,9 +60,9 @@ train_config:
   epochs: 180
 
   loss_config:
-    label_smoothing: 0.005
-    iou_confidence: true
-    class_loss_w: 1.0
+    label_smoothing: 0.01
+    iou_confidence: false
+    class_loss_w: 0.5
     conf_loss_w: 1.0
     ciou_loss_w: 1.0
     sm_loss_w: 0.333333
@@ -73,7 +73,7 @@ train_config:
 
   optimizer_config:
     lr: 0.001
-    weight_decay: 1.0e-03
+    weight_decay: 5.0e-03
     betas: [0.9, 0.999]
     eps: 0.00000001
     name: Adam
@@ -84,9 +84,15 @@ train_config:
     eta_min: 1.0e-05
     name: CosineAnnealingWarmRestarts
 
+  ema_config:
+    momentum: 0.002
+    num_updates: 0
+    N: 2000
+
   metrics_path: metrics
   model_path: saved_model
   scale_segments: true
   shuffle_samples: true
   use_lr_scheduler: true
+  use_ema: false
   verbose: true

@@ -4,6 +4,7 @@ import math
 import torch
 import pandas as pd
 from modules import AudioDetectionNetwork, AudioDetectionLoss
+from smoothener import EMAParamsSmoothener
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 from typing import *
@@ -18,7 +19,8 @@ class TrainerPipeline:
         model_path: str,
         metrics_path: str,
         annotation_filename: str,
-        device: str="cpu"
+        device: str="cpu",
+        ema_smoothener: Optional[EMAParamsSmoothener]=None
     ):
         self.model = model
         self.model.to(device)
@@ -26,7 +28,7 @@ class TrainerPipeline:
         self.optimizer = optimizer
         self.device =  device
         self.annotation_filename = annotation_filename
-
+        self.ema_smoothener = ema_smoothener
         self.model_path =  os.path.join(model_path, self.annotation_filename)
         self.metrics_path = os.path.join(metrics_path, self.annotation_filename)
         self.saved_model_path = os.path.join(self.model_path, f"{self.model.__class__.__name__}.pth.tar")
@@ -37,8 +39,11 @@ class TrainerPipeline:
 
     def save_model(self):
         if not os.path.isdir(self.model_path): os.makedirs(self.model_path, exist_ok=True)
+        model_state_dict = (
+            self.model.state_dict() if not (self.ema_smoothener) else self.ema_smoothener.get_ema_state_dict()
+        )
         state_dicts = {
-            "network_params":self.model.state_dict(),
+            "network_params": model_state_dict,
             "optimizer_params":self.optimizer.state_dict(),
         }
         return torch.save(state_dicts, self.saved_model_path)
@@ -93,7 +98,10 @@ class TrainerPipeline:
             sm_targets: torch.Tensor = targets["sm"].to(device=self.device)
             md_targets: torch.Tensor = targets["md"].to(device=self.device)
             lg_targets: torch.Tensor = targets["lg"].to(device=self.device)
-            sm_preds, md_preds, lg_preds = self.model(audio_tensor)
+            if self.ema_smoothener and mode == "eval":
+                sm_preds, md_preds, lg_preds = self.ema_smoothener.ema_model(audio_tensor)
+            else:
+                sm_preds, md_preds, lg_preds = self.model(audio_tensor)
             batch_loss: torch.Tensor
             batch_loss, batch_metrics = self.loss_fn(
                 (sm_preds, md_preds, lg_preds), 
@@ -103,11 +111,13 @@ class TrainerPipeline:
                 batch_loss.backward()
                 self.optimizer.step()
                 self.optimizer.zero_grad()
+                if self.ema_smoothener:
+                    self.ema_smoothener.update()
                 
             for key in batch_metrics.keys(): 
                 if key not in metrics.keys(): metrics[key] = (batch_metrics[key] / total)
                 else: metrics[key] += (batch_metrics[key] / total)
-
+                
         getattr(self, f"_{mode}_metrics").append(metrics)
         if verbose:
             log = "[" + mode.title() + "]: " + "\t".join([f"{k.replace('_', ' ')}: {v :.4f}" for k, v in metrics.items()])
