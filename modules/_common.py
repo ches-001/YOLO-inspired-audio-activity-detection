@@ -12,7 +12,7 @@ class ConvBNorm(nn.Module):
             kernel_size: Union[int, Tuple[int, int]], 
             stride: Union[int, Tuple[int, int]]=1, 
             padding: Optional[Union[int, Tuple[int, int]]]=None,
-            activation: Optional[Type]=nn.ReLU,
+            activation: Optional[Type]=nn.LeakyReLU,
             bias: bool=True,
         ):
         super(ConvBNorm, self).__init__()
@@ -31,7 +31,10 @@ class ConvBNorm(nn.Module):
         self.batchnorm = nn.BatchNorm2d(out_channels)
         self.activation = None
         if activation:
-            self.activation = activation()
+            if activation == nn.LeakyReLU:
+                self.activation = activation(0.2)
+            else:
+                self.activation = activation()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv(x)
@@ -46,7 +49,7 @@ class RepVGGBlock(nn.Module):
             self, 
             in_channels: int, 
             out_channels: int, 
-            activation: Optional[Type]=nn.ReLU, 
+            activation: Optional[Type]=nn.LeakyReLU, 
             stride: Union[int, Tuple[int, int]]=1,
             padding: Optional[Union[int, Tuple[int, int]]]=None,
         ):
@@ -68,7 +71,10 @@ class RepVGGBlock(nn.Module):
         else:
             self.identity = nn.Identity()
         if activation:
-            self.activation = activation()
+            if activation == nn.LeakyReLU:
+                self.activation = activation(0.2)
+            else:
+                self.activation = activation()
         else:
             self.activation = nn.Identity()
     
