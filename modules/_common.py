@@ -12,7 +12,7 @@ class ConvBNorm(nn.Module):
             kernel_size: Union[int, Tuple[int, int]], 
             stride: Union[int, Tuple[int, int]]=1, 
             padding: Optional[Union[int, Tuple[int, int]]]=None,
-            activation: Optional[Type]=nn.Identity,
+            activation: Optional[Type]=nn.Tanh,
             bias: bool=True,
         ):
         super(ConvBNorm, self).__init__()
@@ -46,7 +46,7 @@ class RepVGGBlock(nn.Module):
             self, 
             in_channels: int, 
             out_channels: int, 
-            activation: Optional[Type]=nn.Identity, 
+            activation: Optional[Type]=nn.Tanh, 
             stride: Union[int, Tuple[int, int]]=1,
             padding: Optional[Union[int, Tuple[int, int]]]=None,
         ):
