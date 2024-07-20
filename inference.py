@@ -68,12 +68,12 @@ def process_model_outputs(
     assert outputs.ndim == 3, "input is expected to have 2 or 3 dimensions"
     _device, _dtype = outputs.device, outputs.dtype
     cw = outputs[..., -2:]
-    x1 = x2 = cw[..., :1] - (cw[..., -1:] / 2)
+    x1 = cw[..., :1] - (cw[..., -1:] / 2)
     x2 = cw[..., :1] + (cw[..., -1:] / 2)
     y1 = torch.zeros_like(x1, device=_device, dtype=_dtype)
     y2 = torch.zeros_like(x2, device=_device, dtype=_dtype) + _h
     coords = torch.cat([x1, y1, x2, y2], dim=-1).clip(min=0, max=sample_duration).squeeze(0)
-    objectness = outputs[..., :1].sigmoid()
+    objectness = outputs[..., :1]
     class_scores = torch.nn.functional.softmax(outputs[..., 1:-2], dim=-1)
     class_scores = torch.gather(class_scores, dim=-1, index=class_scores.argmax(dim=-1, keepdim=True))
     confidence = class_scores * objectness

@@ -57,14 +57,14 @@ train_config:
   annotator: annotator_a
   batch_size: 32
   device: cuda
-  epochs: 180
+  epochs: 320
 
   loss_config:
     label_smoothing: 0.01
     iou_confidence: false
-    class_loss_w: 0.5
+    class_loss_w: 0.3
     conf_loss_w: 1.0
-    ciou_loss_w: 1.0
+    ciou_loss_w: 0.7
     sm_loss_w: 0.333333
     md_loss_w: 0.333333
     lg_loss_w: 0.333333
@@ -79,9 +79,13 @@ train_config:
     name: Adam
 
   lr_scheduler_config:
-    T_0: 60
+    # gamma: 0.1
+    # step_size: 160
+    # last_epoch: -1
+    # name: StepLR
+    T_0: 320
     T_mult: 2
-    eta_min: 1.0e-05
+    eta_min: 1.0e-07
     name: CosineAnnealingWarmRestarts
 
   ema_config:
