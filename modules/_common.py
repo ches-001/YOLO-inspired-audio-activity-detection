@@ -12,7 +12,7 @@ class ConvBNorm(nn.Module):
             kernel_size: Union[int, Tuple[int, int]], 
             stride: Union[int, Tuple[int, int]]=1, 
             padding: Optional[Union[int, Tuple[int, int]]]=None,
-            activation: Optional[Type]=nn.LeakyReLU,
+            activation: Optional[Type]=nn.GELU,
             bias: bool=True,
         ):
         super(ConvBNorm, self).__init__()
@@ -49,7 +49,7 @@ class RepVGGBlock(nn.Module):
             self, 
             in_channels: int, 
             out_channels: int, 
-            activation: Optional[Type]=nn.LeakyReLU, 
+            activation: Optional[Type]=nn.GELU, 
             stride: Union[int, Tuple[int, int]]=1,
             padding: Optional[Union[int, Tuple[int, int]]]=None,
         ):
@@ -187,7 +187,7 @@ class CSPSPPFModule(nn.Module):
             ConvBNorm(c_h, c_h, kernel_size=1)
         )
         self.conv2 = ConvBNorm(in_channels, c_h, kernel_size=1)
-        self.pool = nn.MaxPool2d(kernel_size=pool_kernel_size, stride=1, padding=pool_kernel_size//2)
+        self.pool = nn.AvgPool2d(kernel_size=pool_kernel_size, stride=1, padding=pool_kernel_size//2)
         self.conv5 = ConvBNorm(c_h*4, c_h, kernel_size=1)
         self.conv6 = ConvBNorm(c_h, c_h, kernel_size=3)
         self.conv7 = ConvBNorm(c_h*2, out_channels, kernel_size=1)
