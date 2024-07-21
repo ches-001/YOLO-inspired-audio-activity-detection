@@ -99,7 +99,7 @@ class AudioDetectionLoss(nn.Module):
         # regularisation technique, akin to label smoothening.
         if self.iou_confidence:
             obj_target_confidence = (obj_target_confidence * ious_max.unsqueeze(-1)).detach().clip(min=0, max=1)
-        pos_mask = obj_target_confidence > 0
+        pos_mask = valid_confidence > 0
         num_neg = obj_target_confidence[torch.bitwise_not(pos_mask)].shape[0] + noobj_thresholding_mask.sum()
         num_pos = obj_target_confidence[pos_mask].shape[0]
         pos_weight = torch.tensor(num_neg / (num_pos + e), device=_device)
