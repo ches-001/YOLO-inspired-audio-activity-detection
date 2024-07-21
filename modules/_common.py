@@ -12,7 +12,7 @@ class ConvBNorm(nn.Module):
             kernel_size: Union[int, Tuple[int, int]], 
             stride: Union[int, Tuple[int, int]]=1, 
             padding: Optional[Union[int, Tuple[int, int]]]=None,
-            activation: Optional[Type]=nn.GELU,
+            activation: Optional[Type]=nn.Identity,
             bias: bool=True,
         ):
         super(ConvBNorm, self).__init__()
@@ -49,7 +49,7 @@ class RepVGGBlock(nn.Module):
             self, 
             in_channels: int, 
             out_channels: int, 
-            activation: Optional[Type]=nn.GELU, 
+            activation: Optional[Type]=nn.Identity, 
             stride: Union[int, Tuple[int, int]]=1,
             padding: Optional[Union[int, Tuple[int, int]]]=None,
         ):
@@ -187,7 +187,7 @@ class CSPSPPFModule(nn.Module):
             ConvBNorm(c_h, c_h, kernel_size=1)
         )
         self.conv2 = ConvBNorm(in_channels, c_h, kernel_size=1)
-        self.pool = nn.MaxPool2d(kernel_size=pool_kernel_size, stride=1, padding=pool_kernel_size//2)
+        self.pool = nn.AvgPool2d(kernel_size=pool_kernel_size, stride=1, padding=pool_kernel_size//2)
         self.conv5 = ConvBNorm(c_h*4, c_h, kernel_size=1)
         self.conv6 = ConvBNorm(c_h, c_h, kernel_size=3)
         self.conv7 = ConvBNorm(c_h*2, out_channels, kernel_size=1)
@@ -204,6 +204,19 @@ class CSPSPPFModule(nn.Module):
         x_out = torch.cat((x1, y1), dim=1)
         x_out = self.conv7(x_out)
         return x_out
+
+
+class LinearEstimatorHead(nn.Module):
+    def __init__(self, input_size: int, output_size: int, num_cells: int, num_anchors: int=3):
+        super(LinearEstimatorHead, self).__init__()
+        self._layer = nn.Sequential(
+            nn.Flatten(1, -1),
+            nn.Linear(input_size*num_cells*num_anchors, output_size*num_cells*num_anchors, bias=False),
+            nn.Unflatten(1, (num_cells, num_anchors, output_size))
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self._layer(x)
 
 
 class MultiScaleFmapModule(nn.Module):

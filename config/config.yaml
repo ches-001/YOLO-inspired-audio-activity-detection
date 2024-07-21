@@ -45,7 +45,7 @@ num_anchors: 3
 sample_duration: 60
 taper_input: true
 taper_window: hann
-backbone: "custom"
+backbone: "resnet"
 block_layers: [1, 1, 1, 1]
 dropout: 0.5
 

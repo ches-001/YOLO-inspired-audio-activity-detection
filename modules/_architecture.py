@@ -3,10 +3,10 @@ import torch
 import torchaudio
 import torch.nn as nn
 from ._backbone import CustomBackBone, ResNetBackBone
-from ._common import RepVGGBlock, MultiScaleFmapModule
+from ._common import LinearEstimatorHead, RepVGGBlock, MultiScaleFmapModule
 from typing import *
 
-
+    
 class AudioDetectionNetwork(nn.Module):
     def __init__(self, num_classes: int, config: Union[str, Dict[str, Any]]="config/config.yaml"):
         super(AudioDetectionNetwork, self).__init__()
@@ -63,6 +63,18 @@ class AudioDetectionNetwork(nn.Module):
             self.feature_extractor.fmap4_ch,
             out_channels=self.out_channels
         )
+
+        self.regressor_hdict = nn.ModuleDict({
+            "sm": LinearEstimatorHead(3+num_classes, 2, num_cells=120, num_anchors=self.config["num_anchors"]),
+            "md": LinearEstimatorHead(3+num_classes, 2, num_cells=60, num_anchors=self.config["num_anchors"]),
+            "lg": LinearEstimatorHead(3+num_classes, 2, num_cells=30, num_anchors=self.config["num_anchors"])
+        })
+        self.classifier_hdict = nn.ModuleDict({
+            "sm": LinearEstimatorHead(3+num_classes, num_classes, num_cells=120, num_anchors=self.config["num_anchors"]),
+            "md": LinearEstimatorHead(3+num_classes, num_classes, num_cells=60, num_anchors=self.config["num_anchors"]),
+            "lg": LinearEstimatorHead(3+num_classes, num_classes, num_cells=30, num_anchors=self.config["num_anchors"])
+        })
+
         self.apply(self.xavier_init_weights)
 
     def forward(
@@ -117,9 +129,14 @@ class AudioDetectionNetwork(nn.Module):
         lg_objectness = lg_scale[..., :1]
 
         # next `num_class` indexes correspond to class probabilities of each bbox
-        sm_class_proba = sm_scale[..., 1:1+self.num_classes]
-        md_class_proba = md_scale[..., 1:1+self.num_classes]
-        lg_class_proba = lg_scale[..., 1:1+self.num_classes]
+        sm_class_proba = self.classifier_hdict["sm"](sm_scale)
+        md_class_proba = self.classifier_hdict["md"](md_scale)
+        lg_class_proba = self.classifier_hdict["lg"](lg_scale)
+
+        # center and width
+        sm_cw = self.regressor_hdict["sm"](sm_scale).clip(max=self.config["sample_duration"])
+        md_cw = self.regressor_hdict["md"](md_scale).clip(max=self.config["sample_duration"])
+        lg_cw = self.regressor_hdict["lg"](lg_scale).clip(max=self.config["sample_duration"])
         
         # second to last index corresponds to center of segment along the temporal axis
         sm_stride = x_spectral.shape[-1] // sm_scale.shape[1]
@@ -129,14 +146,14 @@ class AudioDetectionNetwork(nn.Module):
         sm_1dgrid = self.get_segment_coords(num_sm_segments, device=x.device).unsqueeze(-1)
         md_1dgrid = self.get_segment_coords(num_md_segments, device=x.device).unsqueeze(-1)
         lg_1dgrid = self.get_segment_coords(num_lg_segments, device=x.device).unsqueeze(-1)
-        sm_center = ((torch.sigmoid(sm_scale[..., -2:-1]) + sm_1dgrid) * sm_stride) / center_scaler
-        md_center = ((torch.sigmoid(md_scale[..., -2:-1]) + md_1dgrid) * md_stride) / center_scaler
-        lg_center = ((torch.sigmoid(lg_scale[..., -2:-1]) + lg_1dgrid) * lg_stride) / center_scaler
+        sm_center = ((torch.sigmoid(sm_cw[..., -2:-1]) + sm_1dgrid) * sm_stride) / center_scaler
+        md_center = ((torch.sigmoid(md_cw[..., -2:-1]) + md_1dgrid) * md_stride) / center_scaler
+        lg_center = ((torch.sigmoid(lg_cw[..., -2:-1]) + lg_1dgrid) * lg_stride) / center_scaler
 
         # last index of last dimension corresponds to segment duration / width
-        sm_width = (torch.exp(sm_scale[..., -1:]) * self.sm_anchors.unsqueeze(-1)).clip(max=self.config["sample_duration"])
-        md_width = (torch.exp(md_scale[..., -1:]) * self.md_anchors.unsqueeze(-1)).clip(max=self.config["sample_duration"])
-        lg_width = (torch.exp(lg_scale[..., -1:]) * self.lg_anchors.unsqueeze(-1)).clip(max=self.config["sample_duration"])
+        sm_width = (torch.exp(sm_cw[..., -1:]) * self.sm_anchors.unsqueeze(-1))
+        md_width = (torch.exp(md_cw[..., -1:]) * self.md_anchors.unsqueeze(-1))
+        lg_width = (torch.exp(lg_cw[..., -1:]) * self.lg_anchors.unsqueeze(-1))
 
         sm_preds = torch.cat((sm_objectness, sm_class_proba, sm_center, sm_width), dim=-1)
         md_preds = torch.cat((md_objectness, md_class_proba, md_center, md_width), dim=-1)
