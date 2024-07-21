@@ -112,9 +112,9 @@ class AudioDetectionNetwork(nn.Module):
         lg_scale = lg_scale.reshape(batch_size, num_lg_segments, num_lg_anchors, -1)
 
         # first index corresponds to objectness of each box
-        sm_objectness = sm_scale[..., :1].sigmoid()
-        md_objectness = md_scale[..., :1].sigmoid()
-        lg_objectness = lg_scale[..., :1].sigmoid()
+        sm_objectness = sm_scale[..., :1]
+        md_objectness = md_scale[..., :1]
+        lg_objectness = lg_scale[..., :1]
 
         # next `num_class` indexes correspond to class probabilities of each bbox
         sm_class_proba = sm_scale[..., 1:1+self.num_classes]

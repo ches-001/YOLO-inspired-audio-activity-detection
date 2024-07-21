@@ -55,8 +55,8 @@ def get_annotation_label_map(annotations_path: str) -> Dict[int, str]:
 
 
 def process_model_outputs(
-        outputs: torch.Tensor, 
-        iou_threshold: float=0.1, 
+        outputs: torch.Tensor,
+        iou_threshold: float=0.1,
         conf_threshold: float=0.65,
         sample_duration: float=60,
         return_start_end: bool=True,
@@ -73,7 +73,7 @@ def process_model_outputs(
     y1 = torch.zeros_like(x1, device=_device, dtype=_dtype)
     y2 = torch.zeros_like(x2, device=_device, dtype=_dtype) + _h
     coords = torch.cat([x1, y1, x2, y2], dim=-1).clip(min=0, max=sample_duration).squeeze(0)
-    objectness = outputs[..., :1]
+    objectness = outputs[..., :1].sigmoid()
     class_scores = torch.nn.functional.softmax(outputs[..., 1:-2], dim=-1)
     class_scores = torch.gather(class_scores, dim=-1, index=class_scores.argmax(dim=-1, keepdim=True))
     confidence = class_scores * objectness

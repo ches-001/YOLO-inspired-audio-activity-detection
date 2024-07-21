@@ -72,9 +72,6 @@ class AudioDetectionLoss(nn.Module):
         ious_per_anchors = AudioDetectionLoss.compute_ciou(preds[..., -2:], targets[..., -2:], e=e)
         ious_max, best_anchoridx = torch.max(ious_per_anchors, dim=-1)
 
-        iou_sub_mask = torch.ones_like(ious_per_anchors, dtype=torch.bool).scatter(2, best_anchoridx.unsqueeze(-1), False)
-        noobj_pred_mask = torch.ones_like(preds[..., 0], dtype=torch.bool).scatter(2, best_anchoridx.unsqueeze(-1), False)
-
         # target confidence scores (1 if object, 0 if no object)
         valid_confidence = targets[..., :1]
         _index = best_anchoridx.unsqueeze(-1).unsqueeze(-1).expand(*preds.shape[0:2], -1, preds.shape[-1])
@@ -85,36 +82,36 @@ class AudioDetectionLoss(nn.Module):
         ciou_loss = 1 - ious_max.unsqueeze(-1)[valid_confidence == 1].mean()
 
         # confidence loss
-        iou_sub = ious_per_anchors[iou_sub_mask].reshape(*ious_per_anchors.shape[:2], 2)
-        noobj_pred_confidence = preds[noobj_pred_mask].reshape(*preds.shape[:2], 2, -1)[..., 0]
-        noobj_target_confidence = torch.zeros_like(noobj_pred_confidence, device=_device)
-        noobj_thresholding_mask = iou_sub <= self.iou_gt_threshold
-        noobj_pred_confidence = torch.where(noobj_thresholding_mask, noobj_pred_confidence, noobj_target_confidence)
-        obj_pred_confidence = best_preds[..., :1]
-        obj_target_confidence = valid_confidence
-        # target confidence can either be 1 where an audio segment is present and 0s where
+        pred_confidence = preds[..., 0]
+        target_confidence = valid_confidence.tile(1, 1, 3)
+         # target confidence can either be 1 where an audio segment is present and 0s where
         # no audio segment is, or (1 x IoU) where an audio segment is present and (0 x IoU)
         # where no audio segment is. For the latter, the model would essentally aim to predict
         # Its IoU to the target as its confidence, this can also theoretically make for a good
         # regularisation technique, akin to label smoothening.
         if self.iou_confidence:
-            obj_target_confidence = (obj_target_confidence * ious_max.unsqueeze(-1)).detach().clip(min=0, max=1)
-        pos_mask = valid_confidence > 0
-        num_neg = obj_target_confidence[torch.bitwise_not(pos_mask)].shape[0] + noobj_thresholding_mask.sum()
-        num_pos = obj_target_confidence[pos_mask].shape[0]
-        pos_weight = torch.tensor(num_neg / (num_pos + e), device=_device)
-        noobj_conf_loss1 = F.binary_cross_entropy(noobj_pred_confidence, noobj_target_confidence, reduction="none")
-        objnoobj_conf_loss = F.binary_cross_entropy(obj_pred_confidence, obj_target_confidence, reduction="none")
-        obj_mask = obj_target_confidence > 0
-        _zeros = torch.zeros_like(objnoobj_conf_loss, device=_device)
-        obj_conf_loss = torch.where(obj_mask, objnoobj_conf_loss, _zeros) * pos_weight
-        noobj_conf_loss2 = torch.where(torch.bitwise_not(obj_mask), objnoobj_conf_loss, _zeros)
-        _zeros = torch.zeros_like(noobj_conf_loss1, device=_device)
-        noobj_conf_loss1 = torch.where(noobj_pred_confidence>self.conf_ivb_lt_threshold, noobj_conf_loss1, _zeros)
-        _zeros = torch.zeros_like(noobj_conf_loss2, device=_device)
-        noobj_conf_loss2 = torch.where(obj_pred_confidence>self.conf_ivb_lt_threshold, noobj_conf_loss2, _zeros)
-        conf_loss = torch.cat([obj_conf_loss, noobj_conf_loss1, noobj_conf_loss2], dim=-1).mean()
+            target_confidence = (target_confidence * ious_per_anchors).detach()
+        valid_max_ious = ious_per_anchors.max(dim=-1).values.unsqueeze(-1) * valid_confidence
 
+        _mask = (ious_per_anchors != valid_max_ious) & (ious_per_anchors >= self.iou_gt_threshold)
+        _zeros = torch.zeros_like(target_confidence, device=_device)
+        # if you change the loss function from binary_cross_entropy_with_logits to binary_cross_entropy, 
+        # ensure to remove the .clone().fill_(-9999) since you would be using a sigmoid activation for the model
+        # objectness output
+        target_confidence = torch.where(_mask, _zeros, target_confidence)
+        pred_confidence = torch.where(_mask, _zeros.clone().fill_(-9999), pred_confidence)
+
+        target_confidence = torch.where(ious_per_anchors != valid_max_ious, _zeros, target_confidence)
+        # remove the .sigmoid() when you opt for binary_cross_entropy and not binary_cross_entropy_with_logits
+        _mask = (pred_confidence.sigmoid() < self.conf_ivb_lt_threshold) & (target_confidence == 0)
+        pred_confidence = torch.where(_mask, _zeros.clone().fill_(-9999), pred_confidence)
+        pos_weight = torch.tensor(
+            [(target_confidence==0).sum() / ((target_confidence>0).sum() + e)], device=_device
+        )
+        conf_loss = F.binary_cross_entropy_with_logits(
+            pred_confidence, target_confidence, pos_weight=pos_weight, reduction="mean"
+        )
+        
         # class loss
         best_pred_proba = best_preds[..., 1:-2]
         target_classes = targets[..., 1:-2]  
