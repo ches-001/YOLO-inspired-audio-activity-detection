@@ -27,7 +27,7 @@ class ExtractorLayer(nn.Module):
         self._layer = nn.Sequential(
             nn.Conv2d(in_channels, 32, kernel_size=(3, 7), stride=(1, w_stride), padding=(1, 7//2)),
             nn.BatchNorm2d(32),
-            nn.GELU,
+            nn.LeakyReLU(0.2),
             nn.Conv2d(32, out, kernel_size=(3, 7), stride=(h_stride, 1), padding=(1, 7//2)),
             nn.BatchNorm2d(out),
             nn.Dropout(dropout),
@@ -97,7 +97,7 @@ class CustomBackBone(nn.Module):
         self.first_conv = nn.Sequential(
             nn.Conv2d(self.in_channels, 64, kernel_size=(7, 7), stride=1, padding=7//2),
             nn.BatchNorm2d(64),
-            nn.GELU
+            nn.LeakyReLU(0.2)
         )
         self.entry_block = ExtractorBlock(64, 64, 2, dropout=dropout)
         self.block1 = ExtractorBlock(64, 128, self.block_layers[0], dropout=dropout)
