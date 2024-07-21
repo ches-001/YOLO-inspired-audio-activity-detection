@@ -99,9 +99,9 @@ class AudioDetectionLoss(nn.Module):
         # ensure to remove the .clone().fill_(-9999) since you would be using a sigmoid activation for the model
         # objectness output
         target_confidence = torch.where(_mask, _zeros, target_confidence)
+        target_confidence = torch.where(ious_per_anchors != valid_max_ious, _zeros, target_confidence)
         pred_confidence = torch.where(_mask, _zeros.clone().fill_(-9999), pred_confidence)
 
-        target_confidence = torch.where(ious_per_anchors != valid_max_ious, _zeros, target_confidence)
         # remove the .sigmoid() when you opt for binary_cross_entropy and not binary_cross_entropy_with_logits
         _mask = (pred_confidence.sigmoid() < self.conf_ivb_lt_threshold) & (target_confidence == 0)
         pred_confidence = torch.where(_mask, _zeros.clone().fill_(-9999), pred_confidence)
