@@ -20,9 +20,13 @@ class AudioDetectionLoss(nn.Module):
         iou_gt_threshold: float=0.5,
         conf_ivb_lt_threshold: float=0.5,
         scale_t: Optional[int]=None,
-        ignore_index: int=-100
+        ignore_index: int=-100,
+        conf_lossfn: str="bce_loss"
     ):
         super(AudioDetectionLoss, self).__init__()
+        assert conf_lossfn in ["f1_loss", "bce_loss", "hybrid"]
+        if conf_lossfn == "f1_loss":
+            iou_confidence = False
         self.sm_loss_w = sm_loss_w
         self.md_loss_w = md_loss_w
         self.lg_loss_w = lg_loss_w
@@ -36,6 +40,7 @@ class AudioDetectionLoss(nn.Module):
         self.iou_confidence = iou_confidence
         self.scale_t = scale_t if scale_t else 1
         self.ignore_index = ignore_index
+        self.conf_lossfn = conf_lossfn
 
         self.ce_loss_fn = nn.CrossEntropyLoss(weight=self.class_weights, reduction="mean", ignore_index=self.ignore_index)
 
@@ -108,9 +113,24 @@ class AudioDetectionLoss(nn.Module):
         pos_weight = torch.tensor(
             [(target_confidence==0).sum() / ((target_confidence>0).sum() + e)], device=_device
         )
-        conf_loss = F.binary_cross_entropy_with_logits(
-            pred_confidence, target_confidence, pos_weight=pos_weight, reduction="mean"
-        )
+        if self.conf_lossfn == "bce_loss":
+            conf_loss = F.binary_cross_entropy_with_logits(
+                pred_confidence, target_confidence, pos_weight=pos_weight, reduction="mean"
+            )
+        elif self.conf_lossfn == "f1_loss":
+            conf_loss =  AudioDetectionLoss.f1_loss(pred_confidence, target_confidence)
+        elif self.conf_lossfn == "hybrid":
+            bce_loss = F.binary_cross_entropy_with_logits(
+                pred_confidence, target_confidence, pos_weight=pos_weight, reduction="mean"
+            )
+            if self.iou_confidence:
+                target_confidence = torch.where(
+                    target_confidence != 0, 
+                    torch.ones_like(target_confidence, device=_device), 
+                    torch.zeros(target_confidence, device=_device)
+                )
+            f1_loss = AudioDetectionLoss.f1_loss(pred_confidence, target_confidence)
+            conf_loss = (bce_loss + f1_loss) / 2
         
         # class loss
         best_pred_proba = best_preds[..., 1:-2]
@@ -148,6 +168,28 @@ class AudioDetectionLoss(nn.Module):
         metrics_dict["precision"] = precision
         metrics_dict["recall"] = recall
         return loss, metrics_dict
+    
+
+    @staticmethod
+    def f1_loss(pred: torch.Tensor, targets: torch.Tensor, e: int=1e-15) -> torch.Tensor:
+        assert pred.ndim == targets.ndim
+        def _f1(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+            dim = 0
+            if x.ndim > 1:
+                x = x.flatten(1, -1)
+                y = y.flatten(1, -1)
+                dim = 1
+            tp = (x * y).sum(dim=dim)
+            fp = (x * (1 - y)).sum(dim=dim)
+            fn = ((1 - x) * y).sum(dim=dim)
+            precision = tp / (tp + fp + e)
+            recall = tp / (tp + fn + e)
+            f1 = (2 * precision * recall) / (precision + recall + e)
+            return torch.where(f1 != f1, torch.zeros_like(f1), f1)
+        f1_loss1 = 1 - _f1(pred, targets)
+        f1_loss2 = 1 - _f1(1-pred, 1-targets)
+        return ((f1_loss1 + f1_loss2) / 2).mean()
+        
 
     @staticmethod
     def compute_ciou(preds_cw: torch.Tensor, targets_cw: torch.Tensor, e: float=1e-15, _h: float=10.0) -> torch.Tensor:
