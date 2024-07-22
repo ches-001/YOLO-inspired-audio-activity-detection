@@ -18,7 +18,6 @@ class AudioDetectionLoss(nn.Module):
         label_smoothing: float=0,
         iou_confidence: bool=False,
         iou_gt_threshold: float=0.5,
-        conf_ivb_lt_threshold: float=0.5,
         scale_t: Optional[int]=None,
         ignore_index: int=-100,
         conf_lossfn: str="bce_loss"
@@ -36,7 +35,6 @@ class AudioDetectionLoss(nn.Module):
         self.class_weights = class_weights
         self.label_smoothing = label_smoothing
         self.iou_gt_threshold = iou_gt_threshold
-        self.conf_ivb_lt_threshold = conf_ivb_lt_threshold
         self.iou_confidence = iou_confidence
         self.scale_t = scale_t if scale_t else 1
         self.ignore_index = ignore_index
@@ -105,10 +103,6 @@ class AudioDetectionLoss(nn.Module):
         # objectness output
         target_confidence = torch.where(_mask, _zeros, target_confidence)
         target_confidence = torch.where(ious_per_anchors != valid_max_ious, _zeros, target_confidence)
-        pred_confidence = torch.where(_mask, _zeros.clone().fill_(-9999), pred_confidence)
-
-        # remove the .sigmoid() when you opt for binary_cross_entropy and not binary_cross_entropy_with_logits
-        _mask = (pred_confidence.sigmoid() < self.conf_ivb_lt_threshold) & (target_confidence == 0)
         pred_confidence = torch.where(_mask, _zeros.clone().fill_(-9999), pred_confidence)
         pos_weight = torch.tensor(
             [(target_confidence==0).sum() / ((target_confidence>0).sum() + e)], device=_device
@@ -186,9 +180,18 @@ class AudioDetectionLoss(nn.Module):
             recall = tp / (tp + fn + e)
             f1 = (2 * precision * recall) / (precision + recall + e)
             return torch.where(f1 != f1, torch.zeros_like(f1), f1)
-        f1_loss1 = 1 - _f1(pred, targets)
-        f1_loss2 = 1 - _f1(1-pred, 1-targets)
-        return ((f1_loss1 + f1_loss2) / 2).mean()
+        
+        is_zero_targets = torch.all(targets == 0)
+        is_ones_targets = torch.all(targets == 1)
+        if is_zero_targets.item():
+            f1_loss = 1 - _f1(1-pred, 1-targets)
+        elif is_ones_targets:
+            f1_loss = 1 - _f1(pred, targets)
+        else:
+            f1_loss1 = 1 - _f1(pred, targets)
+            f1_loss2 = 1 - _f1(1-pred, 1-targets)
+            f1_loss = ((f1_loss1 + f1_loss2) / 2)
+        return f1_loss.mean()
         
 
     @staticmethod
