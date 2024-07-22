@@ -118,7 +118,7 @@ class AudioDetectionLoss(nn.Module):
                 pred_confidence, target_confidence, pos_weight=pos_weight, reduction="mean"
             )
         elif self.conf_lossfn == "f1_loss":
-            conf_loss =  AudioDetectionLoss.f1_loss(pred_confidence, target_confidence)
+            conf_loss =  AudioDetectionLoss.f1_loss(pred_confidence.sigmoid(), target_confidence)
         elif self.conf_lossfn == "hybrid":
             bce_loss = F.binary_cross_entropy_with_logits(
                 pred_confidence, target_confidence, pos_weight=pos_weight, reduction="mean"
@@ -129,7 +129,7 @@ class AudioDetectionLoss(nn.Module):
                     torch.ones_like(target_confidence, device=_device), 
                     torch.zeros(target_confidence, device=_device)
                 )
-            f1_loss = AudioDetectionLoss.f1_loss(pred_confidence, target_confidence)
+            f1_loss = AudioDetectionLoss.f1_loss(pred_confidence.sigmoid(), target_confidence)
             conf_loss = (bce_loss + f1_loss) / 2
         
         # class loss
