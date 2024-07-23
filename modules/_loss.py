@@ -9,7 +9,8 @@ class AudioDetectionLoss(nn.Module):
     def __init__(
         self, 
         ciou_loss_w: float=1.0,
-        conf_loss_w: float=1.0,
+        obj_conf_loss_w: float=1.0,
+        noobj_conf_loss_w: float=1.0,
         class_loss_w: float=1.0,
         sm_loss_w: float=1.0,
         md_loss_w: float=1.0,
@@ -24,7 +25,8 @@ class AudioDetectionLoss(nn.Module):
         self.md_loss_w = md_loss_w
         self.lg_loss_w = lg_loss_w
         self.ciou_loss_w = ciou_loss_w
-        self.conf_loss_w = conf_loss_w
+        self.obj_conf_loss_w = obj_conf_loss_w
+        self.noobj_conf_loss_w = noobj_conf_loss_w
         self.class_loss_w = class_loss_w
         self.class_weights = class_weights
         self.label_smoothing = label_smoothing
@@ -53,7 +55,8 @@ class AudioDetectionLoss(nn.Module):
 
         metrics_dict["aggregate_loss"] = loss.item()
         metrics_dict["mean_ciou"] = metrics_df["mean_ciou"].mean()
-        metrics_dict["conf_loss"] = metrics_df["conf_loss"].mean()
+        metrics_dict["obj_conf_loss"] = metrics_df["obj_conf_loss"].mean()
+        metrics_dict["noobj_conf_loss"] = metrics_df["noobj_conf_loss"].mean()
         metrics_dict["class_loss"] = metrics_df["class_loss"].mean()
         metrics_dict["accuracy"] = metrics_df["accuracy"].mean()
         metrics_dict["f1"] = metrics_df["f1"].mean()
@@ -99,14 +102,7 @@ class AudioDetectionLoss(nn.Module):
         noobj_conf_loss = F.binary_cross_entropy_with_logits(
             pred_confidence[noobj_mask], target_confidence[noobj_mask], pos_weight=pos_weight, reduction="mean"
         )
-        obj_conf_loss = torch.where(
-            obj_conf_loss != obj_conf_loss, torch.zeros_like(obj_conf_loss), obj_conf_loss
-        )
-        noobj_conf_loss = torch.where(
-            noobj_conf_loss != noobj_conf_loss, torch.zeros_like(noobj_conf_loss), noobj_conf_loss
-        )
-        conf_loss = (0.4 * noobj_conf_loss) + (0.6 * obj_conf_loss)
-        
+
         # class loss
         best_pred_proba = best_preds[..., 1:-2]
         target_classes = targets[..., 1:-2]  
@@ -129,15 +125,17 @@ class AudioDetectionLoss(nn.Module):
              accuracy, f1, precision, recall = [torch.nan] * 4
 
         # aggregate losses
-        _zero = torch.tensor(0.0, device=_device)
+        handle_nan = lambda val, w : (w * val) if val == val else torch.tensor(0.0, device=_device)
         loss = (
-            (self.conf_loss_w * conf_loss) + 
-            (self.ciou_loss_w * (ciou_loss) if ciou_loss == ciou_loss else _zero) + 
-            (self.class_loss_w * (class_loss) if class_loss == class_loss else _zero)
+            handle_nan(ciou_loss, self.ciou_loss_w) +
+            handle_nan(obj_conf_loss, self.obj_conf_loss_w) + 
+            handle_nan(noobj_conf_loss, self.noobj_conf_loss_w) + 
+            handle_nan(class_loss, self.class_loss_w)
         )
         metrics_dict = {}
         metrics_dict["mean_ciou"] = 1 - ciou_loss.item()
-        metrics_dict["conf_loss"] = conf_loss.item()
+        metrics_dict["obj_conf_loss"] = obj_conf_loss.item()
+        metrics_dict["noobj_conf_loss"] = noobj_conf_loss.item()
         metrics_dict["class_loss"] = class_loss.item()
         metrics_dict["accuracy"] = accuracy
         metrics_dict["f1"] = f1

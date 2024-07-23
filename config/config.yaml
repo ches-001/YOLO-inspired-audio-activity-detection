@@ -62,7 +62,8 @@ train_config:
   loss_config:
     label_smoothing: 0.01
     class_loss_w: 0.3
-    conf_loss_w: 1.0
+    obj_conf_loss_w: 1.0
+    noobj_conf_loss_w: 1.0
     ciou_loss_w: 0.7
     sm_loss_w: 1.0
     md_loss_w: 1.0
