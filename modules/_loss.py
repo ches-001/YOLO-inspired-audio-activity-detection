@@ -11,7 +11,7 @@ class AudioDetectionLoss(nn.Module):
         ciou_loss_w: float=1.0,
         conf_loss_w: float=1.0,
         class_loss_w: float=1.0,
-        sm_loss_w: float=.0,
+        sm_loss_w: float=1.0,
         md_loss_w: float=1.0,
         lg_loss_w: float=1.0,
         class_weights: Optional[torch.Tensor]=None,
@@ -90,12 +90,22 @@ class AudioDetectionLoss(nn.Module):
         target_confidence = torch.where(_mask, _zeros, target_confidence)
         target_confidence = torch.where(ious_per_anchors != valid_max_ious, _zeros, target_confidence)
         pred_confidence = torch.where(_mask, _zeros.clone().fill_(-9999), pred_confidence)
-        pos_weight = torch.tensor(
-            [(target_confidence==0).sum() / ((target_confidence>0).sum() + e)], device=_device
+        pos_weight = torch.tensor([1.0], device=_device)
+        noobj_mask = target_confidence == 0
+        obj_mask = torch.bitwise_not(noobj_mask)
+        obj_conf_loss = F.binary_cross_entropy_with_logits(
+            pred_confidence[obj_mask], target_confidence[obj_mask], pos_weight=pos_weight, reduction="mean"
         )
-        conf_loss = F.binary_cross_entropy_with_logits(
-            pred_confidence, target_confidence, pos_weight=pos_weight, reduction="mean"
+        noobj_conf_loss = F.binary_cross_entropy_with_logits(
+            pred_confidence[noobj_mask], target_confidence[noobj_mask], pos_weight=pos_weight, reduction="mean"
         )
+        obj_conf_loss = torch.where(
+            obj_conf_loss != obj_conf_loss, torch.zeros_like(obj_conf_loss), obj_conf_loss
+        )
+        noobj_conf_loss = torch.where(
+            noobj_conf_loss != noobj_conf_loss, torch.zeros_like(noobj_conf_loss), noobj_conf_loss
+        )
+        conf_loss = (0.4 * noobj_conf_loss) + (0.6 * obj_conf_loss)
         
         # class loss
         best_pred_proba = best_preds[..., 1:-2]
