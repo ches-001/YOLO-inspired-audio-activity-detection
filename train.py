@@ -67,15 +67,10 @@ def make_model(config: Dict[str, Any], num_classes: int) -> AudioDetectionNetwor
     return model
 
 def make_loss_fn(config: Dict[str, Any], class_weights: torch.Tensor) -> AudioDetectionLoss:
-    scale_t = None
-    if config["train_config"]["scale_segments"]:
-        scale_t = config["sample_duration"]
-    loss_fn = AudioDetectionLoss(
+    return AudioDetectionLoss(
         class_weights=class_weights,
-        scale_t=scale_t,
         **config["train_config"]["loss_config"]
     )
-    return loss_fn
 
 def make_optimizer(model: AudioDetectionNetwork, config: Dict[str, Any]) -> torch.optim.Optimizer:
     config = config.copy()

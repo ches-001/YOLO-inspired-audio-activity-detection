@@ -16,16 +16,10 @@ class AudioDetectionLoss(nn.Module):
         lg_loss_w: float=1.0,
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
-        iou_confidence: bool=False,
         iou_gt_threshold: float=0.5,
-        scale_t: Optional[int]=None,
         ignore_index: int=-100,
-        conf_lossfn: str="bce_loss"
     ):
         super(AudioDetectionLoss, self).__init__()
-        assert conf_lossfn in ["f1_loss", "bce_loss", "hybrid"]
-        if conf_lossfn == "f1_loss":
-            iou_confidence = False
         self.sm_loss_w = sm_loss_w
         self.md_loss_w = md_loss_w
         self.lg_loss_w = lg_loss_w
@@ -35,12 +29,12 @@ class AudioDetectionLoss(nn.Module):
         self.class_weights = class_weights
         self.label_smoothing = label_smoothing
         self.iou_gt_threshold = iou_gt_threshold
-        self.iou_confidence = iou_confidence
-        self.scale_t = scale_t if scale_t else 1
         self.ignore_index = ignore_index
-        self.conf_lossfn = conf_lossfn
-
-        self.ce_loss_fn = nn.CrossEntropyLoss(weight=self.class_weights, reduction="mean", ignore_index=self.ignore_index)
+        self.ce_loss_fn = nn.CrossEntropyLoss(
+            weight=self.class_weights, 
+            reduction="mean", 
+            ignore_index=self.ignore_index
+        )
 
     def forward(
             self, 
@@ -75,29 +69,21 @@ class AudioDetectionLoss(nn.Module):
         ious_per_anchors = AudioDetectionLoss.compute_ciou(preds[..., -2:], targets[..., -2:], e=e)
         ious_max, best_anchoridx = torch.max(ious_per_anchors, dim=-1)
 
-        # target confidence scores (1 if object, 0 if no object)
-        valid_confidence = targets[..., :1]
+        # target objectness (1 if object, 0 if no object)
+        objectness = targets[..., :1]
         _index = best_anchoridx.unsqueeze(-1).unsqueeze(-1).expand(*preds.shape[0:2], -1, preds.shape[-1])
         best_preds = torch.gather(preds, dim=2, index=_index)
         best_preds = best_preds.squeeze(dim=2)
 
         # segment center and duration loss
-        ciou_loss = 1 - ious_max.unsqueeze(-1)[valid_confidence == 1].mean()
+        ciou_loss = 1 - ious_max.unsqueeze(-1)[objectness == 1].mean()
 
         # confidence loss
         pred_confidence = preds[..., 0]
-        target_confidence = valid_confidence.tile(1, 1, 3)
-         # target confidence can either be 1 where an audio segment is present and 0s where
-        # no audio segment is, or (1 x IoU) where an audio segment is present and (0 x IoU)
-        # where no audio segment is. For the latter, the model would essentally aim to predict
-        # Its IoU to the target as its confidence, this can also theoretically make for a good
-        # regularisation technique, akin to label smoothening.
-        if self.iou_confidence:
-            target_confidence = (target_confidence * ious_per_anchors).detach()
-        valid_max_ious = ious_per_anchors.max(dim=-1).values.unsqueeze(-1) * valid_confidence
-
+        target_confidence = ious_per_anchors.clip(min=0).detach()
+        valid_max_ious = ious_per_anchors.max(dim=-1).values.unsqueeze(-1) * objectness
         _mask = (ious_per_anchors != valid_max_ious) & (ious_per_anchors >= self.iou_gt_threshold)
-        _zeros = torch.zeros_like(target_confidence, device=_device)
+        _zeros = torch.zeros_like(target_confidence)
         # if you change the loss function from binary_cross_entropy_with_logits to binary_cross_entropy, 
         # ensure to remove the .clone().fill_(-9999) since you would be using a sigmoid activation for the model
         # objectness output
@@ -107,24 +93,9 @@ class AudioDetectionLoss(nn.Module):
         pos_weight = torch.tensor(
             [(target_confidence==0).sum() / ((target_confidence>0).sum() + e)], device=_device
         )
-        if self.conf_lossfn == "bce_loss":
-            conf_loss = F.binary_cross_entropy_with_logits(
-                pred_confidence, target_confidence, pos_weight=pos_weight, reduction="mean"
-            )
-        elif self.conf_lossfn == "f1_loss":
-            conf_loss =  AudioDetectionLoss.f1_loss(pred_confidence.sigmoid(), target_confidence)
-        elif self.conf_lossfn == "hybrid":
-            bce_loss = F.binary_cross_entropy_with_logits(
-                pred_confidence, target_confidence, pos_weight=pos_weight, reduction="mean"
-            )
-            if self.iou_confidence:
-                target_confidence = torch.where(
-                    target_confidence != 0, 
-                    torch.ones_like(target_confidence, device=_device), 
-                    torch.zeros(target_confidence, device=_device)
-                )
-            f1_loss = AudioDetectionLoss.f1_loss(pred_confidence.sigmoid(), target_confidence)
-            conf_loss = (bce_loss + f1_loss) / 2
+        conf_loss = F.binary_cross_entropy_with_logits(
+            pred_confidence, target_confidence, pos_weight=pos_weight, reduction="mean"
+        )
         
         # class loss
         best_pred_proba = best_preds[..., 1:-2]
@@ -148,10 +119,11 @@ class AudioDetectionLoss(nn.Module):
              accuracy, f1, precision, recall = [torch.nan] * 4
 
         # aggregate losses
+        _zero = torch.tensor(0.0, device=_device)
         loss = (
-             (self.conf_loss_w * conf_loss) + 
-             (self.ciou_loss_w * (ciou_loss) if ciou_loss == ciou_loss else torch.tensor(0.0, device=_device)) + 
-             (self.class_loss_w * (class_loss) if class_loss == class_loss else torch.tensor(0.0, device=_device))
+            (self.conf_loss_w * conf_loss) + 
+            (self.ciou_loss_w * (ciou_loss) if ciou_loss == ciou_loss else _zero) + 
+            (self.class_loss_w * (class_loss) if class_loss == class_loss else _zero)
         )
         metrics_dict = {}
         metrics_dict["mean_ciou"] = 1 - ciou_loss.item()
@@ -165,36 +137,6 @@ class AudioDetectionLoss(nn.Module):
     
 
     @staticmethod
-    def f1_loss(pred: torch.Tensor, targets: torch.Tensor, e: int=1e-15) -> torch.Tensor:
-        assert pred.ndim == targets.ndim
-        def _f1(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-            dim = 0
-            if x.ndim > 1:
-                x = x.flatten(1, -1)
-                y = y.flatten(1, -1)
-                dim = 1
-            tp = (x * y).sum(dim=dim)
-            fp = (x * (1 - y)).sum(dim=dim)
-            fn = ((1 - x) * y).sum(dim=dim)
-            precision = tp / (tp + fp + e)
-            recall = tp / (tp + fn + e)
-            f1 = (2 * precision * recall) / (precision + recall + e)
-            return torch.where(f1 != f1, torch.zeros_like(f1), f1)
-        
-        is_zero_targets = torch.all(targets == 0)
-        is_ones_targets = torch.all(targets == 1)
-        if is_zero_targets.item():
-            f1_loss = 1 - _f1(1-pred, 1-targets)
-        elif is_ones_targets:
-            f1_loss = 1 - _f1(pred, targets)
-        else:
-            f1_loss1 = 1 - _f1(pred, targets)
-            f1_loss2 = 1 - _f1(1-pred, 1-targets)
-            f1_loss = ((f1_loss1 + f1_loss2) / 2)
-        return f1_loss.mean()
-        
-
-    @staticmethod
     def compute_ciou(preds_cw: torch.Tensor, targets_cw: torch.Tensor, e: float=1e-15, _h: float=10.0) -> torch.Tensor:
         # preds_cw: (S x 3 x 2)     targets_cw: (S x 2) | (S x 1 x 2)
         assert (preds_cw.ndim == targets_cw.ndim + 1) or (preds_cw.ndim == targets_cw.ndim)
@@ -204,22 +146,22 @@ class AudioDetectionLoss(nn.Module):
 
         pred_c = preds_cw[..., :1]
         pred_w = preds_cw[..., -1:]
-        pred_h = torch.ones_like(pred_w, device=_device) * _h
+        pred_h = torch.ones_like(pred_w) * _h
         pred_x1 = pred_c - (pred_w / 2)
-        pred_y1 = torch.zeros_like(pred_x1, device=_device)
+        pred_y1 = torch.zeros_like(pred_x1)
         pred_x2 = pred_c + (pred_w / 2)
         pred_y2 = pred_h
 
         target_c = targets_cw[..., :1]
         target_w = targets_cw[..., -1:]
-        target_h = torch.ones_like(target_w, device=_device) * _h
+        target_h = torch.ones_like(target_w) * _h
         target_x1 = target_c - (target_w / 2)
-        target_y1 = torch.zeros_like(target_x1, device=_device)
+        target_y1 = torch.zeros_like(target_x1)
         target_x2 = target_c + (target_w / 2)
         target_y2 = target_h
 
-        intersection_w = (torch.min(pred_x2, target_x2) - torch.max(pred_x1, target_x1))
-        intersection_h = (torch.min(pred_y2, target_y2) - torch.max(pred_y1, target_y1))
+        intersection_w = (torch.min(pred_x2, target_x2) - torch.max(pred_x1, target_x1)).clip(min=0)
+        intersection_h = (torch.min(pred_y2, target_y2) - torch.max(pred_y1, target_y1)).clip(min=0)
         intersection = intersection_w * intersection_h
         union = (pred_w * pred_h) + (target_w * target_h) - intersection
         iou = intersection / (union + e)
@@ -229,6 +171,7 @@ class AudioDetectionLoss(nn.Module):
         c2 = cw.pow(2) + ch.pow(2) + e
         v = (4 / (torch.pi**2)) * (torch.arctan(target_w / target_h) - torch.arctan(pred_w / pred_h)).pow(2)
         rho2 = (pred_c - target_c).pow(2) + (pred_h/2 - target_h/2).pow(2)
-        a = v / ((1 + e) - iou) + v
+        with torch.no_grad():
+            a = v / ((1 + e) - iou) + v
         ciou = iou - ((rho2/c2) + (a * v))
         return ciou.squeeze(-1)

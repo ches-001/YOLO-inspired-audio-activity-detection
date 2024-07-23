@@ -61,15 +61,13 @@ train_config:
 
   loss_config:
     label_smoothing: 0.01
-    iou_confidence: false
     class_loss_w: 0.3
     conf_loss_w: 1.0
     ciou_loss_w: 0.7
-    sm_loss_w: 0.333333
-    md_loss_w: 0.333333
-    lg_loss_w: 0.333333
+    sm_loss_w: 1.0
+    md_loss_w: 1.0
+    lg_loss_w: 1.0
     iou_gt_threshold: 0.5
-    conf_lossfn: bce_loss
 
   optimizer_config:
     lr: 0.001
@@ -95,7 +93,6 @@ train_config:
 
   metrics_path: metrics
   model_path: saved_model
-  scale_segments: true
   shuffle_samples: true
   use_lr_scheduler: true
   use_ema: false
