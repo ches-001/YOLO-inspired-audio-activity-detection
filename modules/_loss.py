@@ -76,12 +76,12 @@ class AudioDetectionLoss(nn.Module):
         best_preds = best_preds.squeeze(dim=2)
 
         # segment center and duration loss
-        ciou_loss = 1 - ious_max.unsqueeze(-1)[objectness == 1].mean()
+        ciou_loss = (1.0 - ious_max).unsqueeze(-1)[objectness == 1].mean()
 
         # confidence loss
         pred_confidence = preds[..., 0]
         target_confidence = ious_per_anchors.clip(min=0).detach()
-        valid_max_ious = ious_per_anchors.max(dim=-1).values.unsqueeze(-1) * objectness
+        valid_max_ious = ious_per_anchors.max(dim=-1).values.unsqueeze(-1)
         _mask = (ious_per_anchors != valid_max_ious) & (ious_per_anchors >= self.iou_gt_threshold)
         _zeros = torch.zeros_like(target_confidence)
         # if you change the loss function from binary_cross_entropy_with_logits to binary_cross_entropy, 
@@ -140,10 +140,8 @@ class AudioDetectionLoss(nn.Module):
     def compute_ciou(preds_cw: torch.Tensor, targets_cw: torch.Tensor, e: float=1e-15, _h: float=10.0) -> torch.Tensor:
         # preds_cw: (S x 3 x 2)     targets_cw: (S x 2) | (S x 1 x 2)
         assert (preds_cw.ndim == targets_cw.ndim + 1) or (preds_cw.ndim == targets_cw.ndim)
-        _device = preds_cw.device
         if targets_cw.ndim != preds_cw.ndim:
                 targets_cw = targets_cw.unsqueeze(dim=-2)
-
         pred_c = preds_cw[..., :1]
         pred_w = preds_cw[..., -1:]
         pred_h = torch.ones_like(pred_w) * _h
@@ -174,4 +172,4 @@ class AudioDetectionLoss(nn.Module):
         with torch.no_grad():
             a = v / ((1 + e) - iou) + v
         ciou = iou - ((rho2/c2) + (a * v))
-        return ciou.squeeze(-1)
+        return ciou.squeeze(-1).clip(min=0)
