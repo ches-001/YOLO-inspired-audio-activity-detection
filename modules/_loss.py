@@ -84,23 +84,17 @@ class AudioDetectionLoss(nn.Module):
         # confidence loss
         pred_confidence = preds[..., 0]
         target_confidence = ious_per_anchors.clip(min=0).detach()
-        valid_max_ious = ious_per_anchors.max(dim=-1).values.unsqueeze(-1)
-        _mask = (ious_per_anchors != valid_max_ious) & (ious_per_anchors >= self.iou_gt_threshold)
-        _zeros = torch.zeros_like(target_confidence)
-        # if you change the loss function from binary_cross_entropy_with_logits to binary_cross_entropy, 
-        # ensure to remove the .clone().fill_(-9999) since you would be using a sigmoid activation for the model
-        # objectness output
-        target_confidence = torch.where(_mask, _zeros, target_confidence)
-        target_confidence = torch.where(ious_per_anchors != valid_max_ious, _zeros, target_confidence)
-        pred_confidence = torch.where(_mask, _zeros.clone().fill_(-9999), pred_confidence)
-        pos_weight = torch.tensor([1.0], device=_device)
         noobj_mask = target_confidence == 0
         obj_mask = torch.bitwise_not(noobj_mask)
         obj_conf_loss = F.binary_cross_entropy_with_logits(
-            pred_confidence[obj_mask], target_confidence[obj_mask], pos_weight=pos_weight, reduction="mean"
+            pred_confidence[obj_mask], 
+            target_confidence[obj_mask], 
+            pos_weight=torch.tensor([1.0], device=_device)
         )
         noobj_conf_loss = F.binary_cross_entropy_with_logits(
-            pred_confidence[noobj_mask], target_confidence[noobj_mask], pos_weight=pos_weight, reduction="mean"
+            pred_confidence[noobj_mask], 
+            target_confidence[noobj_mask], 
+            pos_weight=torch.tensor([1.0], device=_device)
         )
 
         # class loss
