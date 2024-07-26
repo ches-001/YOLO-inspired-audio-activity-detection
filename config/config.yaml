@@ -47,7 +47,7 @@ taper_input: true
 taper_window: hann
 backbone: custom
 block_layers: [1, 1, 1, 1]
-dropout: 0.5
+dropout: 0.0
 
 resnet_config:
   block: BasicBlock
@@ -57,12 +57,12 @@ train_config:
   annotator: annotator_a
   batch_size: 32
   device: cuda
-  epochs: 320
+  epochs: 540
 
   loss_config:
     label_smoothing: 0.01
     class_loss_w: 0.3
-    obj_conf_loss_w: 1.0
+    obj_conf_loss_w: 1.5
     noobj_conf_loss_w: 1.0
     ciou_loss_w: 0.7
     sm_loss_w: 1.0

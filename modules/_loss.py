@@ -105,15 +105,21 @@ class AudioDetectionLoss(nn.Module):
 
         # class loss
         best_pred_proba = best_preds[..., 1:-2]
-        target_classes = targets[..., 1:-2]  
+        target_classes = targets[..., 1:-2]
         target_classes_idx = target_classes.argmax(dim=-1)
         target_classes_idx[targets[..., 1:-2].sum(dim=-1) == 0] = self.ignore_index
         target_classes_idx = target_classes_idx.reshape(-1)
-        best_pred_proba = best_pred_proba.reshape(-1, best_pred_proba.shape[-1])
-        class_loss = self.ce_loss_fn(best_pred_proba, target_classes_idx)
+        # best_pred_proba = best_pred_proba.reshape(-1, best_pred_proba.shape[-1])
+        # class_loss = self.ce_loss_fn(best_pred_proba, target_classes_idx)
+        pos_weight = torch.tensor(
+            [target_classes[target_classes==0].shape[0] / (target_classes[target_classes!=0].shape[0] + e)], 
+             device=_device
+        )
+        class_loss =  F.binary_cross_entropy_with_logits(best_pred_proba, target_classes, pos_weight=pos_weight)
         
         # accuracy, precision, recall
         if target_classes.max() > 0:
+            best_pred_proba = best_pred_proba.reshape(-1, best_pred_proba.shape[-1])
             ignore_idx_mask = target_classes_idx != self.ignore_index
             pred_labels = best_pred_proba.detach().argmax(dim=-1)[ignore_idx_mask].cpu().numpy()
             target_labels = target_classes_idx[ignore_idx_mask].cpu().numpy()
