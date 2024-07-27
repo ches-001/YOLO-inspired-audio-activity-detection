@@ -68,7 +68,6 @@ train_config:
     sm_loss_w: 1.0
     md_loss_w: 1.0
     lg_loss_w: 1.0
-    iou_gt_threshold: 0.5
     gamma: 2.0
     alpha: 1.0
 

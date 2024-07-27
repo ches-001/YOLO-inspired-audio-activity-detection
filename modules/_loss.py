@@ -38,7 +38,6 @@ class AudioDetectionLoss(nn.Module):
         lg_loss_w: float=1.0,
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
-        iou_gt_threshold: float=0.5,
         ignore_index: int=-100,
         gamma: float=2.0,
         alpha: float=1.0
@@ -53,7 +52,6 @@ class AudioDetectionLoss(nn.Module):
         self.class_loss_w = class_loss_w
         self.class_weights = class_weights
         self.label_smoothing = label_smoothing
-        self.iou_gt_threshold = iou_gt_threshold
         self.ignore_index = ignore_index
         self.cls_loss_fn = nn.CrossEntropyLoss(weight=self.class_weights, ignore_index=self.ignore_index)
         self.conf_loss_fn = FocalLoss(gamma=gamma, alpha=alpha, with_logits=True)
