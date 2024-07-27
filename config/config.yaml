@@ -57,17 +57,20 @@ train_config:
   annotator: annotator_a
   batch_size: 32
   device: cuda
-  epochs: 540
+  epochs: 120
 
   loss_config:
     label_smoothing: 0.01
     class_loss_w: 0.3
-    conf_loss_w: 5.0
+    obj_conf_loss_w: 1.0
+    noobj_conf_loss_w: 1.0
     ciou_loss_w: 0.7
     sm_loss_w: 1.0
     md_loss_w: 1.0
     lg_loss_w: 1.0
     iou_gt_threshold: 0.5
+    gamma: 2.0
+    alpha: 1.0
 
   optimizer_config:
     lr: 0.001
@@ -81,9 +84,9 @@ train_config:
     # step_size: 160
     # last_epoch: -1
     # name: StepLR
-    T_0: 320
-    T_mult: 2
-    eta_min: 1.0e-07
+    T_0: 120
+    T_mult: 1
+    eta_min: 1.0e-05
     name: CosineAnnealingWarmRestarts
 
   ema_config:
