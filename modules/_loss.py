@@ -110,6 +110,7 @@ class AudioDetectionLoss(nn.Module):
         _mask = (target_confidence != ious_max) & (target_confidence >= 0.5)
         _zeros = torch.zeros_like(target_confidence)
         target_confidence = torch.where(_mask, _zeros, target_confidence)
+        target_confidence[target_confidence > 0] = 1
         pred_confidence = torch.where(_mask, _zeros.clone().fill_(-9999), pred_confidence)
         # compute loss for where targets are 0s and where targets are non-zeros seperately
         noobj_mask = target_confidence == 0; obj_mask = torch.bitwise_not(noobj_mask)
