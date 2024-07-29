@@ -137,7 +137,7 @@ class RepVGGBlock(nn.Module):
         
 
 class RepBlock(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, n: int=4):
+    def __init__(self, in_channels: int, out_channels: int, n: int=2):
         super(RepBlock, self).__init__()
         self.conv1 = RepVGGBlock(in_channels, out_channels)
         if n > 1:
@@ -177,7 +177,7 @@ class BiCModule(nn.Module):
     
 
 class CSPSPPFModule(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int, e: float=0.5, pool_kernel_size: int=3):
+    def __init__(self, in_channels: int, out_channels: int, e: float=0.5, pool_kernel_size: int=5):
         super(CSPSPPFModule, self).__init__()
 
         c_h = int(out_channels * e)

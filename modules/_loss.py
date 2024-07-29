@@ -102,6 +102,16 @@ class AudioDetectionLoss(nn.Module):
         # confidence loss
         pred_confidence = preds[..., 0]
         target_confidence = ious_per_anchors.detach()
+        # targets where IoU of any of the the 3 bboxes is not the best and is also < 0.5 are equated to 0
+        ious_max = ious_max.unsqueeze(-1)
+        target_confidence[(target_confidence != ious_max) & (target_confidence < 0.5)] = 0
+        # targets where IoU of any of the the 3 bboxes is not the best but is >= 0.5 are ignored by setting
+        # their targets to 0 and the predictions to -9999 (if working with logits) or 0 (if working with probs)
+        _mask = (target_confidence != ious_max) & (target_confidence >= 0.5)
+        _zeros = torch.zeros_like(target_confidence)
+        target_confidence = torch.where(_mask, _zeros, target_confidence)
+        pred_confidence = torch.where(_mask, _zeros.clone().fill_(-9999), pred_confidence)
+        # compute loss for where targets are 0s and where targets are non-zeros seperately
         noobj_mask = target_confidence == 0; obj_mask = torch.bitwise_not(noobj_mask)
         obj_conf_loss = self.conf_loss_fn(pred_confidence[obj_mask], target_confidence[obj_mask])
         noobj_conf_loss = self.conf_loss_fn(pred_confidence[noobj_mask], target_confidence[noobj_mask])
