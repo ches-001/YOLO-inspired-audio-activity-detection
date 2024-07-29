@@ -54,7 +54,7 @@ class AudioDetectionLoss(nn.Module):
         self.label_smoothing = label_smoothing
         self.ignore_index = ignore_index
         self.cls_loss_fn = nn.CrossEntropyLoss(weight=self.class_weights, ignore_index=self.ignore_index)
-        self.conf_loss_fn = FocalLoss(gamma=gamma, alpha=alpha, with_logits=True)
+        self.conf_loss_fn = nn.BCEWithLogitsLoss()#FocalLoss(gamma=gamma, alpha=alpha, with_logits=True)
 
     def forward(
             self, 
