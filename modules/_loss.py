@@ -101,10 +101,10 @@ class AudioDetectionLoss(nn.Module):
 
         # confidence loss
         pred_confidence = preds[..., 0]
-        target_confidence = ious_per_anchors.clip(min=0).detach()
+        target_confidence = ious_per_anchors.detach()
         noobj_mask = target_confidence == 0; obj_mask = torch.bitwise_not(noobj_mask)
-        obj_conf_loss = self.conf_loss_fn(pred_confidence[obj_mask], target_confidence[obj_mask], )
-        noobj_conf_loss = self.conf_loss_fn(pred_confidence[noobj_mask], target_confidence[noobj_mask], )
+        obj_conf_loss = self.conf_loss_fn(pred_confidence[obj_mask], target_confidence[obj_mask])
+        noobj_conf_loss = self.conf_loss_fn(pred_confidence[noobj_mask], target_confidence[noobj_mask])
         
         # class loss
         best_pred_proba = best_preds[..., 1:-2]
