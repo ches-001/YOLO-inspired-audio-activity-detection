@@ -29,32 +29,39 @@ class FocalLoss(nn.Module):
 class AudioDetectionLoss(nn.Module):
     def __init__(
         self, 
-        ciou_loss_w: float=1.0,
-        obj_conf_loss_w: float=1.0,
-        noobj_conf_loss_w: float=1.0,
-        class_loss_w: float=1.0,
-        sm_loss_w: float=1.0,
-        md_loss_w: float=1.0,
-        lg_loss_w: float=1.0,
+        ciou_w: float=1.0,
+        obj_conf_w: float=1.0,
+        noobj_conf_w: float=1.0,
+        class_w: float=1.0,
+        sm_w: float=1.0,
+        md_w: float=1.0,
+        lg_w: float=1.0,
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
         ignore_index: int=-100,
-        gamma: float=2.0,
-        alpha: float=1.0
+        gamma: Optional[float]=2.0,
+        alpha: Optional[float]=1.0,
+        iou_confidence: bool=False,
+        iou_threshold: float=0.5
     ):
         super(AudioDetectionLoss, self).__init__()
-        self.sm_loss_w = sm_loss_w
-        self.md_loss_w = md_loss_w
-        self.lg_loss_w = lg_loss_w
-        self.ciou_loss_w = ciou_loss_w
-        self.obj_conf_loss_w = obj_conf_loss_w
-        self.noobj_conf_loss_w = noobj_conf_loss_w
-        self.class_loss_w = class_loss_w
+        self.sm_w = sm_w
+        self.md_w = md_w
+        self.lg_w = lg_w
+        self.ciou_w = ciou_w
+        self.obj_conf_w = obj_conf_w
+        self.noobj_conf_w = noobj_conf_w
+        self.class_w = class_w
         self.class_weights = class_weights
         self.label_smoothing = label_smoothing
         self.ignore_index = ignore_index
+        self.iou_confidence = iou_confidence
+        self.iou_threshold = iou_threshold
+        if gamma and alpha:
+            self.conf_loss_fn = FocalLoss(gamma=gamma, alpha=alpha, with_logits=True)
+        else:
+            self.conf_loss_fn = nn.BCEWithLogitsLoss()
         self.cls_loss_fn = nn.CrossEntropyLoss(weight=self.class_weights, ignore_index=self.ignore_index)
-        self.conf_loss_fn = nn.BCEWithLogitsLoss()#FocalLoss(gamma=gamma, alpha=alpha, with_logits=True)
 
     def forward(
             self, 
@@ -68,7 +75,7 @@ class AudioDetectionLoss(nn.Module):
         sm_loss, sm_metrics_dict = self.loss_fn(sm_preds, sm_targets)
         md_loss, md_metrics_dict = self.loss_fn(md_preds, md_targets)
         lg_loss, lg_metrics_dict = self.loss_fn(lg_preds, lg_targets)
-        loss = (self.sm_loss_w * sm_loss) + (self.md_loss_w * md_loss) + (self.lg_loss_w * lg_loss)
+        loss = (self.sm_w * sm_loss) + (self.md_w * md_loss) + (self.lg_w * lg_loss)
         metrics_df = pd.DataFrame([sm_metrics_dict, md_metrics_dict, lg_metrics_dict])
 
         metrics_dict["aggregate_loss"] = loss.item()
@@ -102,15 +109,16 @@ class AudioDetectionLoss(nn.Module):
         # confidence loss
         pred_confidence = preds[..., 0]
         target_confidence = ious_per_anchors.detach()
-        # targets where IoU of any of the the 3 bboxes is not the best and is also < 0.5 are equated to 0
+        # targets where IoU of any of the the 3 bboxes is not the best and is also < `iou_threshold` are equated to 0
         ious_max = ious_max.unsqueeze(-1)
-        target_confidence[(target_confidence != ious_max) & (target_confidence < 0.5)] = 0
-        # targets where IoU of any of the the 3 bboxes is not the best but is >= 0.5 are ignored by setting
+        target_confidence[(target_confidence != ious_max) & (target_confidence < self.iou_threshold)] = 0
+        # targets where IoU of any of the the 3 bboxes is not the best but is >= `iou_threshold` are ignored by setting
         # their targets to 0 and the predictions to -9999 (if working with logits) or 0 (if working with probs)
-        _mask = (target_confidence != ious_max) & (target_confidence >= 0.5)
+        _mask = (target_confidence != ious_max) & (target_confidence >= self.iou_threshold)
         _zeros = torch.zeros_like(target_confidence)
         target_confidence = torch.where(_mask, _zeros, target_confidence)
-        target_confidence[target_confidence > 0] = 1
+        if not self.iou_confidence:
+            target_confidence[target_confidence > 0] = 1
         pred_confidence = torch.where(_mask, _zeros.clone().fill_(-9999), pred_confidence)
         # compute loss for where targets are 0s and where targets are non-zeros seperately
         noobj_mask = target_confidence == 0; obj_mask = torch.bitwise_not(noobj_mask)
@@ -141,10 +149,10 @@ class AudioDetectionLoss(nn.Module):
         # aggregate losses
         handle_nan = lambda val, w : (w * val) if val == val else torch.tensor(0.0, device=_device)
         loss = (
-            handle_nan(ciou_loss, self.ciou_loss_w) +
-            handle_nan(obj_conf_loss, self.obj_conf_loss_w) + 
-            handle_nan(noobj_conf_loss, self.noobj_conf_loss_w) + 
-            handle_nan(class_loss, self.class_loss_w)
+            handle_nan(ciou_loss, self.ciou_w) +
+            handle_nan(obj_conf_loss, self.obj_conf_w) + 
+            handle_nan(noobj_conf_loss, self.noobj_conf_w) + 
+            handle_nan(class_loss, self.class_w)
         )
         metrics_dict = {}
         metrics_dict["mean_ciou"] = 1 - ciou_loss.item()

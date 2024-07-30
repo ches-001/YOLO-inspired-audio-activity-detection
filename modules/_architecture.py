@@ -126,18 +126,27 @@ class AudioDetectionNetwork(nn.Module):
         md_stride = x_spectral.shape[-1] // md_scale.shape[1]
         lg_stride = x_spectral.shape[-1] // lg_scale.shape[1]
         center_scaler = x_spectral.shape[-1] / (x.shape[-1] / self.config["new_sample_rate"])
-        sm_1dgrid = self.get_segment_coords(num_sm_segments, device=x.device).unsqueeze(-1)
-        md_1dgrid = self.get_segment_coords(num_md_segments, device=x.device).unsqueeze(-1)
-        lg_1dgrid = self.get_segment_coords(num_lg_segments, device=x.device).unsqueeze(-1)
+        sm_1dgrid = self.get_1dgrid(num_sm_segments, device=x.device).unsqueeze(-1)
+        md_1dgrid = self.get_1dgrid(num_md_segments, device=x.device).unsqueeze(-1)
+        lg_1dgrid = self.get_1dgrid(num_lg_segments, device=x.device).unsqueeze(-1)
         sm_center = ((torch.sigmoid(sm_scale[..., -2:-1]) + sm_1dgrid) * sm_stride) / center_scaler
         md_center = ((torch.sigmoid(md_scale[..., -2:-1]) + md_1dgrid) * md_stride) / center_scaler
         lg_center = ((torch.sigmoid(lg_scale[..., -2:-1]) + lg_1dgrid) * lg_stride) / center_scaler
+        # clip center values
+        sm_center = sm_center.clip(min=0, max=self.config["sample_duration"])
+        md_center = md_center.clip(min=0, max=self.config["sample_duration"])
+        lg_center = lg_center.clip(min=0, max=self.config["sample_duration"])
 
         # last index of last dimension corresponds to segment duration / width
-        sm_width = (torch.exp(sm_scale[..., -1:]) * self.sm_anchors.unsqueeze(-1)).clip(max=self.config["sample_duration"])
-        md_width = (torch.exp(md_scale[..., -1:]) * self.md_anchors.unsqueeze(-1)).clip(max=self.config["sample_duration"])
-        lg_width = (torch.exp(lg_scale[..., -1:]) * self.lg_anchors.unsqueeze(-1)).clip(max=self.config["sample_duration"])
+        sm_width = (torch.exp(sm_scale[..., -1:]) * self.sm_anchors.unsqueeze(-1))
+        md_width = (torch.exp(md_scale[..., -1:]) * self.md_anchors.unsqueeze(-1))
+        lg_width = (torch.exp(lg_scale[..., -1:]) * self.lg_anchors.unsqueeze(-1))
+        # clip widths / durations
+        sm_width = sm_width.clip(min=0, max=self.config["sample_duration"])
+        md_width = md_width.clip(min=0, max=self.config["sample_duration"])
+        lg_width = lg_width.clip(min=0, max=self.config["sample_duration"])
 
+        # concatenate predictions at various scales
         sm_preds = torch.cat((sm_objectness, sm_class_proba, sm_center, sm_width), dim=-1)
         md_preds = torch.cat((md_objectness, md_class_proba, md_center, md_width), dim=-1)
         lg_preds = torch.cat((lg_objectness, lg_class_proba, lg_center, lg_width), dim=-1)
@@ -149,7 +158,7 @@ class AudioDetectionNetwork(nn.Module):
         preds = torch.cat((sm_preds, md_preds, lg_preds), dim=1).flatten(start_dim=1, end_dim=-2)
         return preds
 
-    def get_segment_coords(self, w: int, device: Union[str, torch.device, int]) -> torch.Tensor:
+    def get_1dgrid(self, w: int, device: Union[str, torch.device, int]) -> torch.Tensor:
         xcoords = torch.arange(0, w)
         return xcoords[:, None].to(device=device)
 
