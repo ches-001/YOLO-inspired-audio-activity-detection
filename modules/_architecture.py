@@ -173,7 +173,14 @@ class AudioDetectionNetwork(nn.Module):
 
     def inference(self):
         self.eval()
-        self.apply(lambda m : m.toggle_inference_mode() if isinstance(m, RepVGGBlock) else ...)
+        def toggle_inference_mode(m: nn.Module):
+            if isinstance(m, RepVGGBlock):
+                if (
+                    isinstance(m.identity, (nn.BatchNorm2d, nn.Identity)) and 
+                    isinstance(m.conv1x1.norm, nn.BatchNorm2d) and 
+                    isinstance(m.conv3x3.norm, nn.BatchNorm2d)
+                ): m.toggle_inference_mode()
+        self.apply(toggle_inference_mode)
     
     @staticmethod
     def scale_input(x: torch.Tensor, e: float=1e-8) -> torch.Tensor:

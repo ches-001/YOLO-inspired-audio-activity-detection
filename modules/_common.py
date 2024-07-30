@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from typing import *
 
 
-class ConvBNorm(nn.Module):
+class ConvBorINorm(nn.Module):
     def __init__(
             self, 
             in_channels: int, 
@@ -12,10 +12,11 @@ class ConvBNorm(nn.Module):
             kernel_size: Union[int, Tuple[int, int]], 
             stride: Union[int, Tuple[int, int]]=1, 
             padding: Optional[Union[int, Tuple[int, int]]]=None,
+            norm_layer: Type=nn.InstanceNorm2d,
             activation: Optional[Type]=nn.LeakyReLU,
             bias: bool=True,
         ):
-        super(ConvBNorm, self).__init__()
+        super(ConvBorINorm, self).__init__()
 
         if padding is None:
             padding = kernel_size // 2
@@ -28,7 +29,7 @@ class ConvBNorm(nn.Module):
             padding=padding,
             bias=bias
         )
-        self.batchnorm = nn.BatchNorm2d(out_channels)
+        self.norm = norm_layer(out_channels)
         self.activation = None
         if activation:
             if activation == nn.LeakyReLU:
@@ -38,7 +39,7 @@ class ConvBNorm(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv(x)
-        x = self.batchnorm(x)
+        x = self.norm(x)
         if self.activation:
             x = self.activation(x)
         return x
@@ -52,6 +53,7 @@ class RepVGGBlock(nn.Module):
             activation: Optional[Type]=nn.LeakyReLU, 
             stride: Union[int, Tuple[int, int]]=1,
             padding: Optional[Union[int, Tuple[int, int]]]=None,
+            identity_layer: Type=nn.InstanceNorm2d
         ):
         super(RepVGGBlock, self).__init__()
         self.in_channels = in_channels
@@ -60,14 +62,14 @@ class RepVGGBlock(nn.Module):
         self.padding = padding or 3//2
         self.inference_mode = False
 
-        self.conv3x3 = ConvBNorm(
+        self.conv3x3 = ConvBorINorm(
             in_channels, out_channels, kernel_size=(3, 3), stride=stride, padding=self.padding, bias=False
         )
-        self.conv1x1 = ConvBNorm(
+        self.conv1x1 = ConvBorINorm(
             in_channels, out_channels, kernel_size=(1, 1), stride=stride, padding=self.padding-1, bias=False
         )
         if stride == 1 and in_channels == out_channels:
-            self.identity = nn.BatchNorm2d(out_channels)
+            self.identity = identity_layer(out_channels)
         else:
             self.identity = nn.Identity()
         if activation:
@@ -90,8 +92,8 @@ class RepVGGBlock(nn.Module):
         return out
     
     def reparameterize(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        w3x3, b3x3 = self._merge_conv_bn(self.conv3x3.conv, self.conv3x3.batchnorm)
-        w1x1, b1x1 = self._merge_conv_bn(self.conv1x1.conv, self.conv1x1.batchnorm)
+        w3x3, b3x3 = self._merge_conv_bn(self.conv3x3.conv, self.conv3x3.norm)
+        w1x1, b1x1 = self._merge_conv_bn(self.conv1x1.conv, self.conv1x1.norm)
         w = w3x3 + F.pad(w1x1, [1, 1, 1, 1])
         b = b3x3 + b1x1
         if not isinstance(self.identity, nn.Identity):
@@ -105,6 +107,10 @@ class RepVGGBlock(nn.Module):
             conv: Union[nn.Conv2d, nn.Identity], 
             bn: nn.BatchNorm2d,
         ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if not isinstance(bn, nn.BatchNorm2d):
+            raise RuntimeError(
+                f"RepVGGBlock reparameterization only works with nn.BatchNorm2d layers, got {type(bn)} instead"
+            )
         if isinstance(conv, nn.Conv2d):
             w = conv.weight
         elif isinstance(conv, nn.Identity):
@@ -163,9 +169,9 @@ class BiCModule(nn.Module):
         c_h = int(out_channels * e)
         self.upsample_layer = nn.Upsample(scale_factor=(1, 2), mode="bilinear")
         self.down_sample = nn.Upsample(scale_factor=(1, 0.5), mode="bilinear")
-        self.conv_c1 = ConvBNorm(c1_in_channels1, c_h, kernel_size=1)
-        self.conv_c0 = ConvBNorm(c0_in_channels1, c_h, kernel_size=1)
-        self.conv_out = ConvBNorm(c_h+c_h+p2_in_channels, out_channels, kernel_size=1)
+        self.conv_c1 = ConvBorINorm(c1_in_channels1, c_h, kernel_size=1)
+        self.conv_c0 = ConvBorINorm(c0_in_channels1, c_h, kernel_size=1)
+        self.conv_out = ConvBorINorm(c_h+c_h+p2_in_channels, out_channels, kernel_size=1)
 
     def forward(self, c1: torch.Tensor, c0: torch.Tensor, p2: torch.Tensor) -> torch.Tensor:
         c1 = self.conv_c1(c1)
@@ -182,15 +188,15 @@ class CSPSPPFModule(nn.Module):
 
         c_h = int(out_channels * e)
         self.conv_1_3_4 = nn.Sequential(
-            ConvBNorm(in_channels, c_h, kernel_size=1),
-            ConvBNorm(c_h, c_h, kernel_size=3),
-            ConvBNorm(c_h, c_h, kernel_size=1)
+            ConvBorINorm(in_channels, c_h, kernel_size=1),
+            ConvBorINorm(c_h, c_h, kernel_size=3),
+            ConvBorINorm(c_h, c_h, kernel_size=1)
         )
-        self.conv2 = ConvBNorm(in_channels, c_h, kernel_size=1)
+        self.conv2 = ConvBorINorm(in_channels, c_h, kernel_size=1)
         self.pool = nn.MaxPool2d(kernel_size=pool_kernel_size, stride=1, padding=pool_kernel_size//2)
-        self.conv5 = ConvBNorm(c_h*4, c_h, kernel_size=1)
-        self.conv6 = ConvBNorm(c_h, c_h, kernel_size=3)
-        self.conv7 = ConvBNorm(c_h*2, out_channels, kernel_size=1)
+        self.conv5 = ConvBorINorm(c_h*4, c_h, kernel_size=1)
+        self.conv6 = ConvBorINorm(c_h, c_h, kernel_size=3)
+        self.conv7 = ConvBorINorm(c_h*2, out_channels, kernel_size=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x1 = self.conv_1_3_4(x)
@@ -226,8 +232,8 @@ class MultiScaleFmapModule(nn.Module):
         self.rep_block3_2 = RepBlock(c_h*2, out_channels)
         self.rep_block4_1 = RepBlock(c_h*2, out_channels)
         self.identity = nn.Identity()
-        self.conv2_downsample = ConvBNorm(out_channels, c_h, kernel_size=3, stride=(1, 2))
-        self.conv3_downsample = ConvBNorm(out_channels, c_h, kernel_size=3, stride=(1, 2))
+        self.conv2_downsample = ConvBorINorm(out_channels, c_h, kernel_size=3, stride=(1, 2))
+        self.conv3_downsample = ConvBorINorm(out_channels, c_h, kernel_size=3, stride=(1, 2))
     
     def forward(
         self, 
