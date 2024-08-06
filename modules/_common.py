@@ -12,7 +12,7 @@ class ConvBorINorm(nn.Module):
             kernel_size: Union[int, Tuple[int, int]], 
             stride: Union[int, Tuple[int, int]]=1, 
             padding: Optional[Union[int, Tuple[int, int]]]=None,
-            norm_layer: Type=nn.InstanceNorm2d,
+            norm_layer: Type=nn.BatchNorm2d,
             activation: Optional[Type]=nn.LeakyReLU,
             bias: bool=True,
         ):
@@ -53,7 +53,7 @@ class RepVGGBlock(nn.Module):
             activation: Optional[Type]=nn.LeakyReLU, 
             stride: Union[int, Tuple[int, int]]=1,
             padding: Optional[Union[int, Tuple[int, int]]]=None,
-            identity_layer: Type=nn.InstanceNorm2d
+            identity_layer: Type=nn.BatchNorm2d
         ):
         super(RepVGGBlock, self).__init__()
         self.in_channels = in_channels
@@ -136,8 +136,8 @@ class RepVGGBlock(nn.Module):
         )
         self.conv_reparam.weight.data = w
         self.conv_reparam.bias.data = b
-        if hasattr(self, "conv3x3"): self.__delattr__("conv3x3")    
-        if hasattr(self, "conv1x1"): self.__delattr__("conv1x1")   
+        if hasattr(self, "conv3x3"): self.__delattr__("conv3x3")
+        if hasattr(self, "conv1x1"): self.__delattr__("conv1x1")
         if hasattr(self, "identity"): self.__delattr__("identity")
         self.inference_mode = True
         
