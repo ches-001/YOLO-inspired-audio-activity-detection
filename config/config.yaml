@@ -68,7 +68,7 @@ train_config:
     label_smoothing: 0.01
 
   optimizer_config:
-    lr: 5.0e-3
+    lr: 1.0e-3
     weight_decay: 5.0e-04
     betas: [0.9, 0.999]
     eps: 1.0e-8
