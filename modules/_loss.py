@@ -98,7 +98,6 @@ class AudioDetectionLoss(nn.Module):
             cp = 1.0 - cn
             t_cls_proba = torch.full_like(p_cls_proba, cn)
             t_cls_proba[:, t_classes] = cp
-            t_cls_proba = (1 - self.label_smoothing) * t_cls_proba
             class_loss = F.binary_cross_entropy_with_logits(p_cls_proba, t_cls_proba, reduce="mean")
 
         # accuracy, precision, recall
