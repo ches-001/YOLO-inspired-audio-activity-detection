@@ -56,7 +56,7 @@ resnet_config:
 train_config:
   annotation_file_path: dataset/annotations/MD_mapping.json
   annotator: annotator_a
-  batch_size: 4
+  batch_size: 32
   device: cuda
   epochs: 120
 

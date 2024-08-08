@@ -82,7 +82,7 @@ class AudioDataset(Dataset):
             audio_tensor = torch.cat((audio_tensor, pad), dim=-1)
             _pad_duration = (audio_start + self.sample_duration) - audio_end
             _pad_center = audio_end + (_pad_duration / 2)
-            pad_label = torch.tensor([torch.zeros(0), _pad_center, _pad_duration]).unsqueeze(dim=0)
+            pad_label = torch.tensor([torch.zeros(1), _pad_center, _pad_duration]).unsqueeze(dim=0)
             sample_labels = torch.cat((sample_labels, pad_label), dim=0)
 
         targets = torch.zeros((sample_labels.shape[0], sample_labels.shape[1]+1), dtype=sample_labels.dtype)
