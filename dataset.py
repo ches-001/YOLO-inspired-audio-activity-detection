@@ -152,6 +152,7 @@ class AudioDataset(Dataset):
             fmap_shape = fmap_shape[0]
 
         _device = targets.device
+        anchors = anchors.to(_device)
         num_anchors = anchors.shape[0]
         num_targets = targets.shape[0]
         targets = targets.unsqueeze(dim=0).tile(num_anchors, 1, 1)
