@@ -151,10 +151,11 @@ class AudioDataset(Dataset):
         if isinstance(fmap_shape, torch.Size):
             fmap_shape = fmap_shape[0]
 
+        _device = targets.device
         num_anchors = anchors.shape[0]
         num_targets = targets.shape[0]
         targets = targets.unsqueeze(dim=0).tile(num_anchors, 1, 1)
-        anchor_idx = torch.arange(num_anchors).unsqueeze(dim=-1).tile(1, num_targets)
+        anchor_idx = torch.arange(num_anchors).unsqueeze(dim=-1).tile(1, num_targets).to(_device)
         targets = torch.cat([targets, anchor_idx[..., None]], dim=-1)
         # compute the ratio between the segment duration and the anchors, segments that are
         # (anchor_threshold x) more or (anchor_threshold x) less than the corresponding achors
