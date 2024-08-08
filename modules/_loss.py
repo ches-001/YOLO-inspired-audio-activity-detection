@@ -112,7 +112,7 @@ class AudioDetectionLoss(nn.Module):
         handle_nan = lambda val : val if val == val else torch.tensor(0.0, device=_device)
         losses = (handle_nan(ciou_loss), handle_nan(conf_loss), handle_nan(class_loss))
         metrics_dict = {}
-        metrics_dict["mean_ciou"] = 1 - ciou_loss.item()
+        metrics_dict["mean_ciou"] = ciou.mean().item()
         metrics_dict["conf_loss"] = conf_loss.item()
         metrics_dict["class_loss"] = class_loss.item()
         metrics_dict["accuracy"] = accuracy

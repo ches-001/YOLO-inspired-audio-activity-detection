@@ -156,7 +156,7 @@ class AudioDataset(Dataset):
         num_anchors = anchors.shape[0]
         num_targets = targets.shape[0]
         targets = targets.unsqueeze(dim=0).tile(num_anchors, 1, 1)
-        anchor_idx = torch.arange(num_anchors).unsqueeze(dim=-1).tile(1, num_targets).to(_device)
+        anchor_idx = torch.arange(num_anchors, device=_device).unsqueeze(dim=-1).tile(1, num_targets)
         targets = torch.cat([targets, anchor_idx[..., None]], dim=-1)
         # compute the ratio between the segment duration and the anchors, segments that are
         # (anchor_threshold x) more or (anchor_threshold x) less than the corresponding achors
@@ -167,18 +167,21 @@ class AudioDataset(Dataset):
         # this variable scales the segment width / duration down within the range of 0 to 1
         # then multiplies by the fmap_shape (number of grids cells for a given scale)
         # by doing so, we can determine what cell a given audio segment's center lies in
-        grid_c = (targets[..., -3:-2] / sample_duration) * fmap_shape
-        grid_i = fmap_shape - grid_c
-        c_mask = ((grid_c % 1 < g) & (grid_c > 1)).T
-        i_mask = ((grid_i % 1 < g) & (grid_i > 1)).T
-        mask = torch.cat([torch.ones_like(c_mask), c_mask, i_mask])
+
+        # grid_c = (targets[..., -3:-2] / sample_duration) * fmap_shape
+        # grid_i = fmap_shape - grid_c
+        # c_mask = ((grid_c % 1 < g) & (grid_c > 1)).T
+        # i_mask = ((grid_i % 1 < g) & (grid_i > 1)).T
+        # mask = torch.cat([torch.ones_like(c_mask), c_mask, i_mask])
+
+        mask = torch.ones_like(targets[..., -3:-2].T, dtype=torch.bool)
         targets = targets.repeat(mask.shape[0], 1, 1)[mask]
 
         batch_idx = targets[:, 0].long()
         anchor_idx = targets[:, -1].long()
         classes = targets[:, 1].long()
         cw = targets[:, 2:-1]
-        gid_c = ((cw[:, 0] / sample_duration) * fmap_shape).long().clip(min=0, max=fmap_shape)
+        grid_c = ((cw[:, 0] / sample_duration) * fmap_shape).long().clip(min=0, max=fmap_shape)
         anchors = anchors[anchor_idx]
-        indices = [batch_idx, gid_c, anchor_idx]
+        indices = [batch_idx, grid_c, anchor_idx]
         return indices, classes, cw
