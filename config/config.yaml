@@ -68,8 +68,6 @@ train_config:
     md_w: 1.0
     lg_w: 1.0
     label_smoothing: 0.01
-    gamma: null
-    alpha: null
     iou_confidence: false
 
   optimizer_config:

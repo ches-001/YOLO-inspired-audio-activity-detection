@@ -1,30 +1,10 @@
 import torch
 import torch.nn as nn
 import pandas as pd
+import torch.nn.functional as F
 from dataset import AudioDataset
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from typing import Tuple, Optional, Dict, List
-
-
-class FocalLoss(nn.Module):
-    def __init__(self, reduction: str="mean", gamma: float=2.0, alpha: float=1.0, with_logits: bool=False):
-        super().__init__()
-        self.with_logits = with_logits
-        self.loss_fn = getattr(nn, ("BCEWithLogitsLoss" if with_logits else "BCELoss"))(reduction="none")
-        self.gamma = gamma
-        self.alpha = alpha
-        self.reduction = reduction
-
-    def forward(self, pred: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        bce_loss: torch.Tensor = self.loss_fn(pred, targets)
-        if self.with_logits:
-            pred = pred.sigmoid()
-        pt = torch.exp(-bce_loss)
-        flloss = (self.alpha * (1 - pt) ** self.gamma) * bce_loss
-
-        if self.reduction == "none":
-            return flloss
-        return getattr(flloss, self.reduction)()
     
 
 class AudioDetectionLoss(nn.Module):
@@ -42,8 +22,6 @@ class AudioDetectionLoss(nn.Module):
         lg_w: float=1.0,
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
-        gamma: Optional[float]=2.0,
-        alpha: Optional[float]=1.0,
         iou_confidence: bool=False,
     ):
         super(AudioDetectionLoss, self).__init__()
@@ -59,10 +37,6 @@ class AudioDetectionLoss(nn.Module):
         self.class_w = class_w
         self.label_smoothing = label_smoothing
         self.iou_confidence = iou_confidence
-        if gamma and alpha:
-            self.conf_loss_fn = FocalLoss(gamma=gamma, alpha=alpha, with_logits=True)
-        else:
-            self.conf_loss_fn = nn.BCEWithLogitsLoss()
         self.cls_loss_fn = nn.CrossEntropyLoss(weight=class_weights)
 
     def forward(
@@ -95,7 +69,9 @@ class AudioDetectionLoss(nn.Module):
             preds: torch.Tensor, 
             targets: torch.Tensor, 
             anchors: List[float],
+            e: float=1e-15
         ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        
         _device = preds.device
         t_conf = torch.zeros(preds.shape[:-1], device=_device, dtype=preds.dtype)
         indices, t_classes, t_cw = AudioDataset.build_target_by_scale(
@@ -116,7 +92,8 @@ class AudioDetectionLoss(nn.Module):
         else:
             t_conf[batch_idx, grid_idx, anchor_idx] = 1
         p_conf = preds[..., 0]
-        conf_loss = self.conf_loss_fn(p_conf, t_conf)
+        pos_weight = torch.tensor([t_conf[t_conf == 0].shape[0] / (t_conf[t_conf > 0].shape[0] + e)], device=_device)
+        conf_loss = F.binary_cross_entropy_with_logits(p_conf, t_conf, pos_weight=pos_weight)
 
         # class loss
         class_loss = self.cls_loss_fn(p_classes, t_classes)
