@@ -47,7 +47,7 @@ taper_input: true
 taper_window: hann
 backbone: custom
 block_layers: [1, 1, 1, 1]
-dropout: 0.3
+dropout: 0.0
 
 resnet_config:
   block: BasicBlock
@@ -61,20 +61,18 @@ train_config:
 
   loss_config:
     anchor_t: 4.0
-    ciou_w: 0.7
-    class_w: 0.3
-    obj_conf_w: 1.0
-    noobj_conf_w: 1.0
+    ciou_w: 0.3
+    class_w: 0.7
+    conf_w: 1.0
     sm_w: 1.0
     md_w: 1.0
     lg_w: 1.0
+    multi_label: false
     label_smoothing: 0.01
-    gamma: null
-    alpha: null
 
   optimizer_config:
-    lr: 1.0e-3
-    weight_decay: 5.0e-03
+    lr: 5.0e-3
+    weight_decay: 5.0e-04
     betas: [0.9, 0.999]
     eps: 1.0e-8
     name: Adam
