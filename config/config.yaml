@@ -46,8 +46,8 @@ num_anchors: 3
 sample_duration: 60
 taper_input: true
 taper_window: hann
-backbone: custom
-block_layers: [1, 1, 1, 1]
+backbone: resnet
+block_layers: [3, 4, 6, 3]
 dropout: 0.4
 
 resnet_config:
@@ -58,12 +58,12 @@ train_config:
   annotator: annotator_a
   batch_size: 32
   device: cuda
-  epochs: 120
+  epochs: 320
 
   loss_config:
     ciou_w: 0.7
     class_w: 0.3
-    conf_w: 1.0
+    conf_w: 1.5
     sm_w: 1.0
     md_w: 1.0
     lg_w: 1.0
@@ -82,7 +82,7 @@ train_config:
     # step_size: 160
     # last_epoch: -1
     # name: StepLR
-    T_0: 120
+    T_0: 320
     T_mult: 1
     eta_min: 1.0e-05
     name: CosineAnnealingWarmRestarts
