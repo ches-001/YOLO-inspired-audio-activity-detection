@@ -12,7 +12,6 @@ anchors:
   - 7.444496919917864
   - 12.86779279279279
 
-anchor_t: 4.0
 sample_rate: 22050
 new_sample_rate: 16000
 audio_extension: wav
@@ -46,9 +45,9 @@ num_anchors: 3
 sample_duration: 60
 taper_input: true
 taper_window: hann
-backbone: resnet
-block_layers: [3, 4, 6, 3]
-dropout: 0.4
+backbone: custom
+block_layers: [1, 1, 1, 1]
+dropout: 0.3
 
 resnet_config:
   block: BasicBlock
@@ -61,14 +60,17 @@ train_config:
   epochs: 320
 
   loss_config:
+    anchor_t: 4.0
     ciou_w: 0.7
     class_w: 0.3
-    conf_w: 1.5
+    obj_conf_w: 1.0
+    noobj_conf_w: 1.0
     sm_w: 1.0
     md_w: 1.0
     lg_w: 1.0
     label_smoothing: 0.01
-    iou_confidence: false
+    gamma: null
+    alpha: null
 
   optimizer_config:
     lr: 1.0e-3

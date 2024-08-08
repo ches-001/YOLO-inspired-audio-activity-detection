@@ -68,7 +68,6 @@ def make_loss_fn(config: Dict[str, Any], num_classes: int, class_weights: torch.
     return AudioDetectionLoss(
         anchors_dict=config["anchors"],
         num_classes=num_classes,
-        anchor_t=config["anchor_t"],
         sample_duration=config["sample_duration"],
         class_weights=class_weights,
         **config["train_config"]["loss_config"]
