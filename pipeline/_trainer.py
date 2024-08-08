@@ -95,18 +95,13 @@ class TrainerPipeline:
 
         for audio_tensor, targets in tqdm.tqdm(dataloader, total=total):
             audio_tensor: torch.Tensor = audio_tensor.to(self.device)
-            sm_targets: torch.Tensor = targets["sm"].to(device=self.device)
-            md_targets: torch.Tensor = targets["md"].to(device=self.device)
-            lg_targets: torch.Tensor = targets["lg"].to(device=self.device)
+            targets: torch.Tensor = targets.to(self.device)
             if self.ema_smoothener and mode == "eval":
                 sm_preds, md_preds, lg_preds = self.ema_smoothener.ema_model(audio_tensor)
             else:
                 sm_preds, md_preds, lg_preds = self.model(audio_tensor)
             batch_loss: torch.Tensor
-            batch_loss, batch_metrics = self.loss_fn(
-                (sm_preds, md_preds, lg_preds), 
-                (sm_targets, md_targets, lg_targets)
-            )
+            batch_loss, batch_metrics = self.loss_fn((sm_preds, md_preds, lg_preds), targets)
             if mode == "train":
                 batch_loss.backward()
                 self.optimizer.step()

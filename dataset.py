@@ -4,7 +4,6 @@ import torch
 import torchaudio
 import numpy as np
 from torch.utils.data import Dataset
-from torch.nn.functional import one_hot
 from typing import *
 
 
@@ -15,13 +14,11 @@ class AudioDataset(Dataset):
             annotations: Dict[str, Any], 
             anchors_dict: Dict[str, Iterable[float]],
             sample_duration: int=60,
-            num_sm_segments: int=120,
             sample_rate: int=22_050,
             extension: str="wav",
         ):
         self.audios_path = audios_path
         self.sample_duration = sample_duration
-        self.num_sm_segments = num_sm_segments
         self.sample_rate = sample_rate
         self.extension = extension
         self.orig_annotations = annotations
@@ -68,13 +65,12 @@ class AudioDataset(Dataset):
         sample_classes = torch.from_numpy(
             np.vectorize(lambda label : self.label2idx[label])(sample_classes)
         ).to(torch.int64) 
-        sample_classes_ohe = one_hot(sample_classes.long(), num_classes=len(self.label2idx)).float() 
         # sample segment length instead of sample segment end (aspar YOLO convention)
         sample_times[:, 1] = (sample_times[:, 1] - sample_times[:, 0])
         # segment center instead of segment start (aspar YOLO convention)
         sample_times[:, 0] = sample_times[:, 0] + (sample_times[:, 1] / 2)
         sample_times = torch.from_numpy(sample_times).to(dtype=torch.float32)
-        sample_labels = torch.cat((sample_classes_ohe, sample_times), dim=-1)
+        sample_labels = torch.cat((sample_classes[:, None], sample_times), dim=-1)
 
         # pad audio file if audio file duration not up to `sample_duration`
         max_num_samples = self.sample_duration * self.sample_rate
@@ -86,62 +82,12 @@ class AudioDataset(Dataset):
             audio_tensor = torch.cat((audio_tensor, pad), dim=-1)
             _pad_duration = (audio_start + self.sample_duration) - audio_end
             _pad_center = audio_end + (_pad_duration / 2)
-            pad_label = torch.tensor([*torch.zeros(len(self.label2idx)), _pad_center, _pad_duration]).unsqueeze(dim=0)
+            pad_label = torch.tensor([torch.zeros(0), _pad_center, _pad_duration]).unsqueeze(dim=0)
             sample_labels = torch.cat((sample_labels, pad_label), dim=0)
 
-        # format labels to 3D tensors of different scales
-        sm_bsegments, md_bsegments, lg_bsegments = self._get_segments_by_scale(sample_labels)
-        targets = {}
-        targets["sm"] = sm_bsegments
-        targets["md"] = md_bsegments
-        targets["lg"] = lg_bsegments
+        targets = torch.zeros((sample_labels.shape[0], sample_labels.shape[1]+1), dtype=sample_labels.dtype)
+        targets[:, 1:] = sample_labels
         return audio_tensor, targets
-    
-
-    def _get_segments_by_scale(self, segments: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        sm_anchors = torch.Tensor(self.anchors_dict["sm"])
-        md_anchors = torch.Tensor(self.anchors_dict["md"])
-        lg_anchors = torch.Tensor(self.anchors_dict["lg"])
-        anchors = torch.cat((sm_anchors, md_anchors, lg_anchors)).unsqueeze(-1)
-        cdist = torch.cdist(segments[:, -1, None], anchors)
-        segment_anchors_idx = torch.argmin(cdist, dim=-1)
-        num_anchors_per_scale = len(self.anchors_dict["sm"])
-        scales = torch.ceil((segment_anchors_idx + 1) / num_anchors_per_scale) - 1
-        sm_segments = segments[scales == 0]
-        md_segments = segments[scales == 1]
-        lg_segments = segments[scales == 2]
-        num_sm_segments = self.num_sm_segments
-        num_md_segments = num_sm_segments // 2
-        num_lg_segments = num_md_segments // 2
-        # generate bounding segments (similar to bounding boxes in YOLO)
-        # first index of last dimension corresponds to confidence score
-        # second index of last dimension corresponds to label
-        # third index of last dimension corresponds to center of segment
-        # last index of last dimension corresponds to duration / width of segment
-        num_classes = len(self.label2idx)
-        sm_bsegments = torch.zeros((num_sm_segments, 3+num_classes), dtype=torch.float32)
-        md_bsegments = torch.zeros((num_md_segments, 3+num_classes), dtype=torch.float32)
-        lg_bsegments = torch.zeros((num_lg_segments, 3+num_classes), dtype=torch.float32)
-        if sm_segments.numel() > 0:
-            num_cells = self.sample_duration / num_sm_segments
-            sm_cellidx = torch.ceil((sm_segments[:, -2] / num_cells) - 1).to(dtype=torch.int64)
-            sm_bsegments[sm_cellidx, 0] = 1
-            sm_bsegments[sm_cellidx, 1:] = sm_segments
-        if md_segments.numel() > 0:
-            num_cells = self.sample_duration / num_md_segments
-            md_cellidx = torch.ceil((md_segments[:, -2] / num_cells) - 1).to(dtype=torch.int64)
-            md_bsegments[md_cellidx, 0] = 1
-            md_bsegments[md_cellidx, 1:] = md_segments
-        if lg_segments.numel() > 0:
-            num_cells = self.sample_duration / num_lg_segments
-            lg_cellidx = torch.ceil((lg_segments[:, -2] / num_cells) - 1).to(dtype=torch.int64)
-            lg_bsegments[lg_cellidx, 0] = 1
-            lg_bsegments[lg_cellidx, 1:] = lg_segments
-
-        sm_bsegments[sm_bsegments[..., 1:-2].sum(dim=-1) == 0, 0] = 0
-        md_bsegments[md_bsegments[..., 1:-2].sum(dim=-1) == 0, 0] = 0
-        lg_bsegments[lg_bsegments[..., 1:-2].sum(dim=-1) == 0, 0] = 0
-        return sm_bsegments, md_bsegments, lg_bsegments
 
 
     def get_class_weights(self, device: Optional[str]=None) -> torch.Tensor:
@@ -179,3 +125,58 @@ class AudioDataset(Dataset):
         self.label2idx = {label:i for i, label in enumerate(unique_classes)}
         self.label_counts = {k:class_counts[k] for k in unique_classes}
 
+
+    @staticmethod
+    def collate_fn(batch: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+        audio_signals, targets = zip(*batch)
+        for i, target in enumerate(targets):
+            target[:, 0] = i
+        audio_signals = torch.stack(audio_signals, dim=0)
+        targets = torch.cat(targets, dim=0)
+        return audio_signals, targets
+    
+    @staticmethod
+    def build_target_by_scale(
+            targets: torch.Tensor, 
+            fmap_shape: Union[int, torch.Size],
+            anchors: Union[List[float], torch.Tensor],
+            anchor_threshold: float=4.0,
+            sample_duration: float=60,
+        ) -> Tuple[List[torch.Tensor], torch.Tensor, torch.Tensor]:
+        # targets; (batch_idx, cls, center, duration)
+        g = 0.5
+        # match segments to anchors
+        if not isinstance(anchors, torch.Tensor):
+            anchors = torch.tensor(anchors)
+        if isinstance(fmap_shape, torch.Size):
+            fmap_shape = fmap_shape[0]
+
+        num_anchors = anchors.shape[0]
+        num_targets = targets.shape[0]
+        targets = targets.unsqueeze(dim=0).tile(num_anchors, 1, 1)
+        anchor_idx = torch.arange(num_anchors).unsqueeze(dim=-1).tile(1, num_targets)
+        targets = torch.cat([targets, anchor_idx[..., None]], dim=-1)
+        # compute the ratio between the segment duration and the anchors, segments that are
+        # (anchor_threshold x) more or (anchor_threshold x) less than the corresponding achors
+        # are filtered, while the rest are discarded
+        r = targets[..., -2:-1] / anchors[:, None, None]
+        targets = targets[torch.max(r, 1/r).max(dim=-1).values < anchor_threshold]
+
+        # this variable scales the segment width / duration down within the range of 0 to 1
+        # then multiplies by the fmap_shape (number of grids cells for a given scale)
+        # by doing so, we can determine what cell a given audio segment's center lies in
+        grid_c = (targets[..., -3:-2] / sample_duration) * fmap_shape
+        grid_i = fmap_shape - grid_c
+        c_mask = ((grid_c % 1 < g) & (grid_c > 1)).T
+        i_mask = ((grid_i % 1 < g) & (grid_i > 1)).T
+        mask = torch.cat([torch.ones_like(c_mask), c_mask, i_mask])
+        targets = targets.repeat(mask.shape[0], 1, 1)[mask]
+
+        batch_idx = targets[:, 0].long()
+        anchor_idx = targets[:, -1].long()
+        classes = targets[:, 1].long()
+        cw = targets[:, 2:-1]
+        gid_c = ((cw[:, 0] / sample_duration) * fmap_shape).long().clip(min=0, max=fmap_shape)
+        anchors = anchors[anchor_idx]
+        indices = [batch_idx, gid_c, anchor_idx]
+        return indices, classes, cw

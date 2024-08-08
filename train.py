@@ -41,13 +41,11 @@ def load_annotations(path: str) -> Dict[str, Any]:
 
 def make_dataset(path: str, config: Dict[str, Any], annotations: Dict[str, Any]) -> AudioDataset:
     num_sm_segments = config["sample_duration"] * config["new_sample_rate"]
-    num_sm_segments = (num_sm_segments / config["melspectrogram_config"]["n_fft"]) / 8
     num_sm_segments = int(num_sm_segments)
     kwargs = dict(
         annotations=annotations, 
         anchors_dict=config["anchors"], 
         sample_duration=config["sample_duration"],
-        num_sm_segments=num_sm_segments,
         sample_rate=config["sample_rate"],
         extension=config["audio_extension"],
     )
@@ -59,15 +57,19 @@ def make_dataloader(dataset: AudioDataset, config: Dict[str, Any]) -> DataLoader
         batch_size=config["train_config"]["batch_size"], 
         shuffle=config["train_config"]["shuffle_samples"]
     )
-    return DataLoader(dataset, **kwargs)
+    return DataLoader(dataset, collate_fn=AudioDataset.collate_fn, **kwargs)
 
 def make_model(config: Dict[str, Any], num_classes: int) -> AudioDetectionNetwork:
     model = AudioDetectionNetwork(num_classes=num_classes, config=config)
     model.train()
     return model
 
-def make_loss_fn(config: Dict[str, Any], class_weights: torch.Tensor) -> AudioDetectionLoss:
+def make_loss_fn(config: Dict[str, Any], num_classes: int, class_weights: torch.Tensor) -> AudioDetectionLoss:
     return AudioDetectionLoss(
+        anchors_dict=config["anchors"],
+        num_classes=num_classes,
+        anchor_t=config["anchor_t"],
+        sample_duration=config["sample_duration"],
         class_weights=class_weights,
         **config["train_config"]["loss_config"]
     )
@@ -98,9 +100,10 @@ def run(config: Dict[str, Any]):
     train_dataloader = make_dataloader(train_dataset, config)
     eval_dataloader = make_dataloader(eval_dataset, config)
 
-    model = make_model(config, num_classes=len(train_dataset.label2idx))
+    num_classes = len(train_dataset.label2idx)
+    model = make_model(config, num_classes=num_classes)
     model.to(device)
-    loss_fn = make_loss_fn(config, class_weights=train_dataset.get_class_weights(device=device))
+    loss_fn = make_loss_fn(config, num_classes=num_classes, class_weights=train_dataset.get_class_weights(device=device))
     optimizer = make_optimizer(model, config)
     lr_scheduler = None
     if config["train_config"]["use_lr_scheduler"]:
