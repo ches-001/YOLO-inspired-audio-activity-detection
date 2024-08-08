@@ -14,12 +14,9 @@ class AudioDetectionLoss(nn.Module):
         num_classes: int,
         anchor_t: float=4.0,
         sample_duration: float=60,
-        ciou_w: float=1.0,
+        box_w: float=1.0,
         conf_w: float=1.0,
         class_w: float=1.0,
-        sm_w: float=1.0,
-        md_w: float=1.0,
-        lg_w: float=1.0,
         multi_label: bool=False,
         class_weights: Optional[torch.Tensor]=None,
         label_smoothing: float=0,
@@ -29,10 +26,7 @@ class AudioDetectionLoss(nn.Module):
         self.num_classes = num_classes
         self.anchor_t = anchor_t
         self.sample_duration = sample_duration
-        self.sm_w = sm_w
-        self.md_w = md_w
-        self.lg_w = lg_w
-        self.ciou_w = ciou_w
+        self.box_w = box_w
         self.conf_w = conf_w
         self.class_w = class_w
         self.multi_label = multi_label
@@ -40,17 +34,20 @@ class AudioDetectionLoss(nn.Module):
         self.class_weights = class_weights
 
     def forward(
-            self, 
-            preds: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], 
-            targets: torch.Tensor
-    ) -> Tuple[torch.Tensor, Dict[str, float]]:
-        
+        self, preds: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], 
+        targets: torch.Tensor
+    ) -> Tuple[torch.Tensor, Dict[str, float]]:        
         metrics_dict = {}
         sm_preds, md_preds, lg_preds = preds
-        sm_loss, sm_metrics_dict = self.loss_fn(sm_preds, targets, anchors=self.anchors_dict["sm"])
-        md_loss, md_metrics_dict = self.loss_fn(md_preds, targets, anchors=self.anchors_dict["md"])
-        lg_loss, lg_metrics_dict = self.loss_fn(lg_preds, targets, anchors=self.anchors_dict["lg"])
-        loss = (self.sm_w * sm_loss) + (self.md_w * md_loss) + (self.lg_w * lg_loss)
+        (sm_lbox, sm_lconf, sm_lcls), sm_metrics_dict = self.loss_fn(sm_preds, targets, anchors=self.anchors_dict["sm"])
+        (md_lbox, md_lconf, md_lcls), md_metrics_dict = self.loss_fn(md_preds, targets, anchors=self.anchors_dict["md"])
+        (lg_lbox, lg_lconf, lg_lcls), lg_metrics_dict = self.loss_fn(lg_preds, targets, anchors=self.anchors_dict["lg"])
+
+        lbox = sm_lbox + md_lbox + lg_lbox
+        lconf = (sm_lconf * 4.0) + (md_lconf * 1.0) + (lg_lconf * 0.4)
+        lcls = sm_lcls + md_lcls + lg_lcls
+
+        loss = ((self.box_w * lbox) + (self.conf_w * lconf) + (self.class_w * lcls)) * preds[-1].shape[0]
         metrics_df = pd.DataFrame([sm_metrics_dict, md_metrics_dict, lg_metrics_dict])
 
         metrics_dict["aggregate_loss"] = loss.item()
@@ -69,7 +66,7 @@ class AudioDetectionLoss(nn.Module):
             preds: torch.Tensor, 
             targets: torch.Tensor, 
             anchors: List[float],
-        ) -> Tuple[torch.Tensor, Dict[str, float]]:
+        ) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], Dict[str, float]]:
         
         _device = preds.device
         t_conf = torch.zeros(preds.shape[:-1], device=_device, dtype=preds.dtype)
@@ -112,12 +109,8 @@ class AudioDetectionLoss(nn.Module):
              accuracy, f1, precision, recall = [torch.nan] * 4
 
         # aggregate losses
-        handle_nan = lambda val, w : (w * val) if val == val else torch.tensor(0.0, device=_device)
-        loss = (
-            handle_nan(ciou_loss, self.ciou_w) +
-            handle_nan(conf_loss, self.conf_w) + 
-            handle_nan(class_loss, self.class_w)
-        )
+        handle_nan = lambda val : val if val == val else torch.tensor(0.0, device=_device)
+        losses = (handle_nan(ciou_loss), handle_nan(conf_loss), handle_nan(class_loss))
         metrics_dict = {}
         metrics_dict["mean_ciou"] = 1 - ciou_loss.item()
         metrics_dict["conf_loss"] = conf_loss.item()
@@ -126,7 +119,7 @@ class AudioDetectionLoss(nn.Module):
         metrics_dict["f1"] = f1
         metrics_dict["precision"] = precision
         metrics_dict["recall"] = recall
-        return loss, metrics_dict
+        return losses, metrics_dict
 
 
     @staticmethod

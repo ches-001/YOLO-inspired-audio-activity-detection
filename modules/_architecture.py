@@ -129,18 +129,18 @@ class AudioDetectionNetwork(nn.Module):
         sm_1dgrid = self.get_1dgrid(num_sm_segments, device=x.device).unsqueeze(-1)
         md_1dgrid = self.get_1dgrid(num_md_segments, device=x.device).unsqueeze(-1)
         lg_1dgrid = self.get_1dgrid(num_lg_segments, device=x.device).unsqueeze(-1)
-        sm_center = ((torch.sigmoid(sm_scale[..., -2:-1]) + sm_1dgrid) * sm_stride) / center_scaler
-        md_center = ((torch.sigmoid(md_scale[..., -2:-1]) + md_1dgrid) * md_stride) / center_scaler
-        lg_center = ((torch.sigmoid(lg_scale[..., -2:-1]) + lg_1dgrid) * lg_stride) / center_scaler
+        sm_center = (((sm_scale[..., -2:-1].sigmoid() * 2 - 0.5) + sm_1dgrid) * sm_stride) / center_scaler
+        md_center = (((md_scale[..., -2:-1].sigmoid() * 2 - 0.5) + md_1dgrid) * md_stride) / center_scaler
+        lg_center = (((lg_scale[..., -2:-1].sigmoid() * 2 - 0.5) + lg_1dgrid) * lg_stride) / center_scaler
         # clip center values
         sm_center = sm_center.clip(min=0, max=self.config["sample_duration"])
         md_center = md_center.clip(min=0, max=self.config["sample_duration"])
         lg_center = lg_center.clip(min=0, max=self.config["sample_duration"])
 
         # last index of last dimension corresponds to segment duration / width
-        sm_width = (torch.exp(sm_scale[..., -1:]) * self.sm_anchors.unsqueeze(-1))
-        md_width = (torch.exp(md_scale[..., -1:]) * self.md_anchors.unsqueeze(-1))
-        lg_width = (torch.exp(lg_scale[..., -1:]) * self.lg_anchors.unsqueeze(-1))
+        sm_width = (sm_scale[..., -1:].sigmoid() * 2).pow(2) * self.sm_anchors.unsqueeze(-1)
+        md_width = (md_scale[..., -1:].sigmoid() * 2).pow(2) * self.md_anchors.unsqueeze(-1)
+        lg_width = (lg_scale[..., -1:].sigmoid() * 2).pow(2) * self.lg_anchors.unsqueeze(-1)
         # clip widths / durations
         sm_width = sm_width.clip(min=0, max=self.config["sample_duration"])
         md_width = md_width.clip(min=0, max=self.config["sample_duration"])

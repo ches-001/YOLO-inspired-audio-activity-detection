@@ -61,12 +61,9 @@ train_config:
 
   loss_config:
     anchor_t: 4.0
-    ciou_w: 0.3
-    class_w: 0.7
-    conf_w: 1.0
-    sm_w: 1.0
-    md_w: 1.0
-    lg_w: 1.0
+    box_w: 0.05
+    class_w: 0.3
+    conf_w: 0.6
     multi_label: false
     label_smoothing: 0.01
 
