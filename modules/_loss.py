@@ -63,7 +63,7 @@ class AudioDetectionLoss(nn.Module):
         self.cls_loss_fn = nn.CrossEntropyLoss(weight=class_weights)
 
         if gamma and alpha:
-            self.conf_loss_fn = FocalLoss(gamma=gamma, alpha=alpha)
+            self.conf_loss_fn = FocalLoss(gamma=gamma, alpha=alpha, with_logits=True)
         else:
             self.conf_loss_fn = nn.BCEWithLogitsLoss()
 
