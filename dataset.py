@@ -135,6 +135,7 @@ class AudioDataset(Dataset):
         targets = torch.cat(targets, dim=0)
         return audio_signals, targets
     
+    
     @staticmethod
     def build_target_by_scale(
             targets: torch.Tensor, 
@@ -142,9 +143,9 @@ class AudioDataset(Dataset):
             anchors: Union[List[float], torch.Tensor],
             anchor_threshold: float=4.0,
             sample_duration: float=60,
+            edge_threshold: float=0.5
         ) -> Tuple[List[torch.Tensor], torch.Tensor, torch.Tensor]:
         # targets; (batch_idx, cls, center, duration)
-        g = 0.5
         # match segments to anchors
         if not isinstance(anchors, torch.Tensor):
             anchors = torch.tensor(anchors)
@@ -158,30 +159,60 @@ class AudioDataset(Dataset):
         targets = targets.unsqueeze(dim=0).tile(num_anchors, 1, 1)
         anchor_idx = torch.arange(num_anchors, device=_device).unsqueeze(dim=-1).tile(1, num_targets)
         targets = torch.cat([targets, anchor_idx[..., None]], dim=-1)
+        
         # compute the ratio between the segment duration and the anchors, segments that are
         # (anchor_threshold x) more or (anchor_threshold x) less than the corresponding achors
         # are filtered, while the rest are discarded
         r = targets[..., -2:-1] / anchors[:, None, None]
-        targets = targets[torch.max(r, 1/r).max(dim=-1).values < anchor_threshold]
+        targets = targets[torch.max(r, 1/r).squeeze(dim=-1) < anchor_threshold]
 
-        # this variable scales the segment width / duration down within the range of 0 to 1
+        # this line scales the segment width / duration down within the range of 0 to 1
         # then multiplies by the fmap_shape (number of grids cells for a given scale)
         # by doing so, we can determine what cell a given audio segment's center lies in
+        grid_c = (targets[..., -3:-2] / sample_duration) * fmap_shape
 
-        # grid_c = (targets[..., -3:-2] / sample_duration) * fmap_shape
-        # grid_i = fmap_shape - grid_c
-        # c_mask = ((grid_c % 1 < g) & (grid_c > 1)).T
-        # i_mask = ((grid_i % 1 < g) & (grid_i > 1)).T
-        # mask = torch.cat([torch.ones_like(c_mask), c_mask, i_mask])
+        # this line computes the grid of segment centers in reverse order, imagine it as
+        # a method where the grid is flipped left to right to get the reverse locations
+        grid_i = fmap_shape - grid_c
 
-        mask = torch.ones_like(targets[..., -3:-2].T, dtype=torch.bool)
+        # next we look for segments, whose corresponding centers are close to the edge of 
+        # its grid cell (either leftwards or rightwards) while simultanously not being at
+        # the edge of the image / spectrogram (in the first grid or in the last grid)
+        c_mask = ((grid_c % 1 < edge_threshold) & (grid_c > 1)).T
+        i_mask = ((grid_i % 1 < edge_threshold) & (grid_i > 1)).T
+
+        # we formulate a mask that includes all the selected targets as well as all the targets
+        # that satisfy the conditions of the c_mask and i_mask (Note that there will mostly always
+        # be repititions of segments in the final targets)
+        mask = torch.cat([torch.ones_like(c_mask), c_mask, i_mask])
         targets = targets.repeat(mask.shape[0], 1, 1)[mask]
+
+        # based on the masks generated above, we formulate offsets. The idea here is that for a certain
+        # segment whose center falls close to the left edge of a grid cell, there is also a chance that 
+        # the preceding grid cell can be capable of predicting that segment. Similarly, if the center
+        # falls close to the right edge of a grid cell, there is also a good chance that the superseding
+        # grid cell can also be capable of predicting that segment. Hence the offsets are made such that
+        # when such segments are found, we match them against the predictions at its grid cell, as well as
+        # the preceding and superseding grid cells if applicable.
+        # Eg: suppose we have a segment centered at 40.89 sec with duration of 10 sec in a 60secs signal, 
+        # with a grid map of 120 cells, this segment will fall in the cell: floor((40.89 / 60) * 120) = 81
+        # note that (40.89 / 60) * 120) = 81.78, the decimal part (0.78) is greater than our edge_threshold
+        # of 0.5, hence it implies that this segment is close to the right edge of its corresponding grid cell
+        # (81) hence we include cell 81 and cell 82 in the index of cells as cells that are capable of 
+        # predicting this segment.
+        # The offsets are defined such 0 corresponds to the offset of the original grids, indicating no changes
+        # to them, -1 indicates a leftward shift to the preceding grid cell if segment's center is close to the
+        # left edge of its grid, and 1 indicates a rightward shift to next grid cell if segment's center is 
+        # close to the right edge of its grid.
+        offset = torch.tensor([[0], [-1], [1]], device=_device, dtype=targets.dtype) * edge_threshold
+        offset = (torch.zeros_like(grid_c)[None] + offset[:, None])[mask]
 
         batch_idx = targets[:, 0].long()
         anchor_idx = targets[:, -1].long()
         classes = targets[:, 1].long()
         cw = targets[:, 2:-1]
-        grid_c = ((cw[:, 0] / sample_duration) * fmap_shape).long().clip(min=0, max=fmap_shape)
+        grid_idx = ((cw[:, 0] / sample_duration) * fmap_shape) + offset.squeeze(dim=-1)
+        grid_idx = grid_idx.long().clip(min=0, max=fmap_shape)
         anchors = anchors[anchor_idx]
-        indices = [batch_idx, grid_c, anchor_idx]
+        indices = [batch_idx, grid_idx, anchor_idx]
         return indices, classes, cw

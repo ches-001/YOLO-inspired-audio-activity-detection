@@ -13,6 +13,7 @@ class AudioDetectionLoss(nn.Module):
         anchors_dict: Dict[str, List[float]],
         num_classes: int,
         anchor_t: float=4.0,
+        edge_t: float=0.5,
         sample_duration: float=60,
         box_w: float=1.0,
         conf_w: float=1.0,
@@ -25,6 +26,7 @@ class AudioDetectionLoss(nn.Module):
         self.anchors_dict = anchors_dict
         self.num_classes = num_classes
         self.anchor_t = anchor_t
+        self.edge_t = edge_t
         self.sample_duration = sample_duration
         self.box_w = box_w
         self.conf_w = conf_w
@@ -71,7 +73,12 @@ class AudioDetectionLoss(nn.Module):
         _device = preds.device
         t_conf = torch.zeros(preds.shape[:-1], device=_device, dtype=preds.dtype)
         indices, t_classes, t_cw = AudioDataset.build_target_by_scale(
-            targets, preds.shape[1], anchors, anchor_threshold=self.anchor_t, sample_duration=self.sample_duration
+            targets, 
+            preds.shape[1], 
+            anchors, 
+            anchor_threshold=self.anchor_t, 
+            sample_duration=self.sample_duration, 
+            edge_threshold=self.edge_t
         )
         batch_idx, grid_idx, anchor_idx = indices
         match_preds = preds[batch_idx, grid_idx, anchor_idx]
