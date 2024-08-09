@@ -62,15 +62,15 @@ train_config:
   loss_config:
     anchor_t: 3.44
     edge_t: 0.5
-    box_w: 0.05
+    box_w: 0.1
     class_w: 0.3
     conf_w: 0.6
     multi_label: true
-    label_smoothing: 0.01
+    label_smoothing: 0.08
 
   optimizer_config:
     lr: 1.0e-3
-    weight_decay: 9.0e-04
+    weight_decay: 1.0e-03
     betas: [0.9, 0.999]
     eps: 1.0e-8
     name: Adam
@@ -82,7 +82,7 @@ train_config:
     # name: StepLR
     T_0: 320
     T_mult: 1
-    eta_min: 1.0e-05
+    eta_min: 1.0e-06
     name: CosineAnnealingWarmRestarts
 
   ema_config:
