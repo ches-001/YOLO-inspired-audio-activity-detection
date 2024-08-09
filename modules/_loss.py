@@ -140,7 +140,7 @@ class AudioDetectionLoss(nn.Module):
 
         # class loss
         if not self.multi_label:
-            class_loss = self.cls_lossfn(p_cls_proba, t_classes, weight=self.class_weights)
+            class_loss = self.cls_lossfn(p_cls_proba, t_classes)
         else:
             cn = 0.5 * self.label_smoothing
             cp = 1.0 - cn
