@@ -67,6 +67,9 @@ train_config:
     conf_w: 0.6
     multi_label: true
     label_smoothing: 0.08
+    batch_scale_loss: false
+    alpha: 0.25
+    gamma: 1.5
 
   optimizer_config:
     lr: 1.0e-3
