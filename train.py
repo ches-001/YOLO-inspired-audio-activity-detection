@@ -40,11 +40,8 @@ def load_annotations(path: str) -> Dict[str, Any]:
     return data
 
 def make_dataset(path: str, config: Dict[str, Any], annotations: Dict[str, Any]) -> AudioDataset:
-    num_sm_segments = config["sample_duration"] * config["new_sample_rate"]
-    num_sm_segments = int(num_sm_segments)
     kwargs = dict(
         annotations=annotations, 
-        anchors_dict=config["anchors"], 
         sample_duration=config["sample_duration"],
         sample_rate=config["sample_rate"],
         extension=config["audio_extension"],

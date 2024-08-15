@@ -7,6 +7,7 @@ dataset/data
 dataset/train
 dataset/eval
 dataset/test
+dataset/annotations/client_annotation.json
 notebook_outputs
 saved_model
 **/__pycache__

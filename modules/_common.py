@@ -19,7 +19,10 @@ class ConvBorINorm(nn.Module):
         super(ConvBorINorm, self).__init__()
 
         if padding is None:
-            padding = kernel_size // 2
+            if isinstance(kernel_size, int):
+                padding = kernel_size // 2
+            else:
+                padding = [i//2 for i in kernel_size]
 
         self.conv = nn.Conv2d(
             in_channels,

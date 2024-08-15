@@ -52,7 +52,8 @@ class AudioDetectionLoss(nn.Module):
         label_smoothing: float=0,
         batch_scale_loss: bool=False,
         alpha: Optional[float]=None,
-        gamma: Optional[float]=None
+        gamma: Optional[float]=None,
+        ignore_index: int=-100
     ):
         super(AudioDetectionLoss, self).__init__()
         self.anchors_dict = anchors_dict
@@ -67,6 +68,7 @@ class AudioDetectionLoss(nn.Module):
         self.label_smoothing = label_smoothing
         self.batch_scale_loss = batch_scale_loss
         self.class_weights = class_weights
+        self.ignore_index = ignore_index
 
         if alpha and gamma:
             self.conf_lossfn = FocalLoss(alpha=alpha, gamma=gamma, with_logits=True)
@@ -76,10 +78,11 @@ class AudioDetectionLoss(nn.Module):
         if multi_label:
             self.cls_lossfn = nn.BCEWithLogitsLoss()
         else:
-            self.cls_lossfn = nn.CrossEntropyLoss(weight=class_weights)
+            self.cls_lossfn = nn.CrossEntropyLoss(weight=class_weights, ignore_index=self.ignore_index)
 
     def forward(
-        self, preds: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], 
+        self, 
+        preds: Tuple[torch.Tensor, torch.Tensor, torch.Tensor], 
         targets: torch.Tensor
     ) -> Tuple[torch.Tensor, Dict[str, float]]:        
         metrics_dict = {}
@@ -139,6 +142,8 @@ class AudioDetectionLoss(nn.Module):
         conf_loss = self.conf_lossfn(p_conf, t_conf)
 
         # class loss
+        t_classes = t_classes[t_classes != self.ignore_index]
+        p_cls_proba = p_cls_proba[t_classes != self.ignore_index]
         if not self.multi_label:
             class_loss = self.cls_lossfn(p_cls_proba, t_classes)
         else:
@@ -174,7 +179,7 @@ class AudioDetectionLoss(nn.Module):
 
 
     @staticmethod
-    def compute_ciou(preds_cw: torch.Tensor, targets_cw: torch.Tensor, e: float=1e-15, _h: float=10.0) -> torch.Tensor:
+    def compute_ciou(preds_cw: torch.Tensor, targets_cw: torch.Tensor, e: float=1e-8, _h: float=10.0) -> torch.Tensor:
         assert (preds_cw.ndim == targets_cw.ndim + 1) or (preds_cw.ndim == targets_cw.ndim)
         if targets_cw.ndim != preds_cw.ndim:
                 targets_cw = targets_cw.unsqueeze(dim=-2)
@@ -184,7 +189,7 @@ class AudioDetectionLoss(nn.Module):
         pred_x1 = pred_c - (pred_w / 2)
         pred_y1 = torch.zeros_like(pred_x1)
         pred_x2 = pred_c + (pred_w / 2)
-        pred_y2 = pred_h
+        pred_y2 = pred_h.clone()
 
         target_c = targets_cw[..., :1]
         target_w = targets_cw[..., -1:]
@@ -192,7 +197,7 @@ class AudioDetectionLoss(nn.Module):
         target_x1 = target_c - (target_w / 2)
         target_y1 = torch.zeros_like(target_x1)
         target_x2 = target_c + (target_w / 2)
-        target_y2 = target_h
+        target_y2 = target_h.clone()
 
         intersection_w = (torch.min(pred_x2, target_x2) - torch.max(pred_x1, target_x1)).clip(min=0)
         intersection_h = (torch.min(pred_y2, target_y2) - torch.max(pred_y1, target_y1)).clip(min=0)

@@ -60,7 +60,7 @@ train_config:
   epochs: 320
 
   loss_config:
-    anchor_t: 1.44
+    anchor_t: 3.44
     edge_t: 0.5
     box_w: 0.1
     class_w: 0.3
@@ -68,8 +68,8 @@ train_config:
     multi_label: false
     label_smoothing: 0.08
     batch_scale_loss: false
-    alpha: 0.25
-    gamma: 1.5
+    alpha: null
+    gamma: null
 
   optimizer_config:
     lr: 1.0e-3

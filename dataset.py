@@ -12,24 +12,31 @@ class AudioDataset(Dataset):
             self, 
             audios_path: str, 
             annotations: Dict[str, Any], 
-            anchors_dict: Dict[str, Iterable[float]],
             sample_duration: int=60,
             sample_rate: int=22_050,
             extension: str="wav",
+            ignore_index: int=-100,
+            grouped_annotation: bool=False
         ):
         self.audios_path = audios_path
         self.sample_duration = sample_duration
         self.sample_rate = sample_rate
         self.extension = extension
+        self.ignore_index = ignore_index
         self.orig_annotations = annotations
+        self.grouped_annotation = grouped_annotation
         self.label_counts = {}
         self.label2idx = {}
         self._samples = []
         self.label_counts = {}
-        self.anchors_dict = anchors_dict
         audio_filenames = [i.replace(f".{extension}", "") for i in os.listdir(self.audios_path)]
         annotations = {k:v for k, v in self.orig_annotations.items() if k in audio_filenames}
-        self._index_samples(annotations)
+
+        if not grouped_annotation:
+            self._index_samples(annotations)
+        else:
+            self._index_grouped_samples(annotations)
+        self.ignore_index = ignore_index
 
 
     def __len__(self) -> int:
@@ -40,7 +47,12 @@ class AudioDataset(Dataset):
         sample = self._samples[idx]
         filename = sample["filename"]
         sample = sample["sample"]
-        sample_times = sample[:, :2].astype(float)
+
+        gmin = 0
+        if "group_minmax" in sample.keys():
+            gmin, _ = sample["group_minmax"]
+
+        sample_times = sample[:, :2].astype(float) - gmin
         sample_classes = sample[:, -1]
         filepath = os.path.join(self.audios_path, f"{filename}.{self.extension}")
         audio_start, audio_end = sample_times[0][0], sample_times[-1][1]
@@ -82,7 +94,7 @@ class AudioDataset(Dataset):
             audio_tensor = torch.cat((audio_tensor, pad), dim=-1)
             _pad_duration = (audio_start + self.sample_duration) - audio_end
             _pad_center = audio_end + (_pad_duration / 2)
-            pad_label = torch.tensor([torch.zeros(1), _pad_center, _pad_duration]).unsqueeze(dim=0)
+            pad_label = torch.tensor([torch.zeros(1).fill_(self.ignore_index), _pad_center, _pad_duration]).unsqueeze(dim=0)
             sample_labels = torch.cat((sample_labels, pad_label), dim=0)
 
         targets = torch.zeros((sample_labels.shape[0], sample_labels.shape[1]+1), dtype=sample_labels.dtype)
@@ -120,6 +132,38 @@ class AudioDataset(Dataset):
             sample = np.asarray(sample)
             sample = {"filename": filename, "sample":sample}
             self._samples.append(sample)
+        
+        unique_classes = sorted(unique_classes)
+        self.label2idx = {label:i for i, label in enumerate(unique_classes)}
+        self.label_counts = {k:class_counts[k] for k in unique_classes}
+
+    
+    def _index_grouped_samples(self, annotations: Dict[str, Any]):
+        self._samples = []
+        unique_classes = []
+        class_counts = {}
+        for filename in tqdm.tqdm(annotations.keys()):
+            groups = annotations[filename]
+            gmin, gmax = 0, self.sample_duration
+            for group in groups.keys():
+                annotation = groups[group]
+                segment_keys = sorted(list(annotation.keys()))
+                sample = []
+                for key in segment_keys:
+                    _class = annotation[key]["class"]
+                    if _class not in unique_classes:
+                        unique_classes.append(_class)
+                    
+                    if _class not in class_counts:
+                        class_counts[_class] = 1
+                    else:
+                        class_counts[_class] += 1
+                    sample.append([annotation[key]["start"], annotation[key]["end"], _class])
+
+                sample = np.asarray(sample)
+                sample = {"filename": filename, "group_minmax": np.asarray([gmin, gmax]), "sample": sample}
+                self._samples.append(sample)
+                gmin, gmax = gmax, gmax+self.sample_duration
         
         unique_classes = sorted(unique_classes)
         self.label2idx = {label:i for i, label in enumerate(unique_classes)}
