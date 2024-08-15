@@ -46,11 +46,10 @@ class AudioDataset(Dataset):
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         sample = self._samples[idx]
         filename = sample["filename"]
-        sample = sample["sample"]
-
         gmin = 0
         if "group_minmax" in sample.keys():
             gmin, _ = sample["group_minmax"]
+        sample = sample["sample"]
 
         sample_times = sample[:, :2].astype(float) - gmin
         sample_classes = sample[:, -1]
