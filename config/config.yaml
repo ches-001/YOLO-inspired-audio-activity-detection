@@ -12,8 +12,10 @@ anchors:
   - 8.600302233902823
   - 14.432620481927781
 
-block_layers: [1, 1, 1, 1]
 backbone: custom
+block_layers: [1, 1, 1, 1]
+resnet_config:
+  block: BasicBlock
 dropout: 0.4
 
 melspectrogram_config:
@@ -40,13 +42,10 @@ mfcc_config:
     win_length: null
   n_mfcc: 32
 
-new_sample_rate: 16000
 num_anchors: 3
-resnet_config:
-  block: BasicBlock
-
 sample_duration: 60
 sample_rate: 44100
+new_sample_rate: 16000
 scale_input: true
 taper_input: true
 taper_window: hann
