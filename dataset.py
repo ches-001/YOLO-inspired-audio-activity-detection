@@ -30,7 +30,7 @@ class AudioDataset(Dataset):
         audio_filenames = [i.replace(f".{extension}", "") for i in os.listdir(self.audios_path)]
         annotations = {k:v for k, v in self.orig_annotations.items() if k in audio_filenames}
 
-        if not self.is_grouped_annotations(annotations):
+        if not AudioDataset.is_grouped_annotations(annotations):
             self._index_samples(annotations)
         else:
             self._index_grouped_samples(annotations)
@@ -167,13 +167,13 @@ class AudioDataset(Dataset):
         self.label2idx = {label:i for i, label in enumerate(unique_classes)}
         self.label_counts = {k:class_counts[k] for k in unique_classes}
 
-    
-    def is_grouped_annotations(self, annotations: Dict[str, Any]) -> bool:
+
+    @staticmethod    
+    def is_grouped_annotations(annotations: Dict[str, Any]) -> bool:
         filenames = list(annotations.keys())
         groups_or_segments = annotations[filenames[0]]
         ks = list(groups_or_segments.keys())
         return ks[0].startswith("group")
-
 
 
     @staticmethod

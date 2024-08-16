@@ -1,20 +1,20 @@
 anchors:
   lg:
-  - 43.19310559006211
-  - 50.995572519083964
-  - 59.81746359223294
+  - 44.70780701754382
+  - 52.36519855595674
+  - 59.91998569384765
   md:
-  - 19.55103626943005
-  - 27.203208722741433
-  - 35.17562231759656
+  - 21.138245614035124
+  - 28.70468354430382
+  - 36.84896788990825
   sm:
-  - 2.650371318822021
-  - 7.444496919917864
-  - 12.86779279279279
+  - 3.2617021276596105
+  - 8.600302233902823
+  - 14.432620481927781
 
-sample_rate: 22050
-new_sample_rate: 16000
-audio_extension: wav
+block_layers: [1, 1, 1, 1]
+backbone: custom
+dropout: 0.4
 
 melspectrogram_config:
   center: false
@@ -40,63 +40,59 @@ mfcc_config:
     win_length: null
   n_mfcc: 32
 
-scale_input: true
+new_sample_rate: 16000
 num_anchors: 3
-sample_duration: 60
-taper_input: true
-taper_window: hann
-backbone: custom
-block_layers: [1, 1, 1, 1]
-dropout: 0.4
-
 resnet_config:
   block: BasicBlock
 
+sample_duration: 60
+sample_rate: 44100
+scale_input: true
+taper_input: true
+taper_window: hann
+
 train_config:
-  dataset_path: dataset/openbmat
-  annotation_file: MD_mapping.json
+  dataset_path: dataset/ivy
+  annotation_file: annotation.json
   annotator: annotator_a
-  batch_size: 4
+  batch_size: 32
+  audio_extension: wav
   device: cuda
   epochs: 320
 
   loss_config:
-    anchor_t: 3.44
-    edge_t: 0.5
+    alpha: null
+    anchor_t: 1.5
+    batch_scale_loss: false
     box_w: 0.1
     class_w: 0.3
     conf_w: 0.6
-    multi_label: false
-    label_smoothing: 0.08
-    batch_scale_loss: false
-    alpha: null
+    edge_t: 0.5
     gamma: null
+    label_smoothing: 0.08
+    multi_label: false
 
   optimizer_config:
-    lr: 1.0e-3
-    weight_decay: 1.0e-03
     betas: [0.9, 0.999]
-    eps: 1.0e-8
+    eps: 1.0e-08
+    lr: 0.001
     name: Adam
+    weight_decay: 0.001
 
   lr_scheduler_config:
-    # gamma: 0.1
-    # step_size: 160
-    # last_epoch: -1
-    # name: StepLR
     T_0: 320
     T_mult: 1
     eta_min: 1.0e-06
     name: CosineAnnealingWarmRestarts
 
   ema_config:
+    N: 2000
     momentum: 0.002
     num_updates: 0
-    N: 2000
 
+  shuffle_samples: true
+  use_ema: false
+  use_lr_scheduler: true
+  verbose: true
   metrics_path: metrics
   model_path: saved_model
-  shuffle_samples: true
-  use_lr_scheduler: true
-  use_ema: false
-  verbose: true

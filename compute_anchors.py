@@ -4,6 +4,7 @@ import yaml
 import random
 import numpy as np
 from sklearn.cluster import KMeans
+from dataset import AudioDataset
 
 SEED = 42
 NUM_CLUSTERS = 9
@@ -29,7 +30,6 @@ def set_config_anchors(sm_anchors: np.ndarray, md_anchors: np.ndarray, lg_anchor
     f.close()
 
 if __name__ == "__main__":
-    annotations_path = "dataset/annotations/MD_mapping.json"
     annotator = "annotator_a"
     init = "k-means++"
     n_init = "auto"
@@ -37,10 +37,7 @@ if __name__ == "__main__":
     tol = 1e-10
 
     parser = argparse.ArgumentParser(description=f"Anchor Segment Generation")
-    parser.add_argument(
-        "--annotations_path", type=str, default=annotations_path, metavar="", 
-        help=f"JSON annotations path (default = {annotations_path})"
-    )
+    parser.add_argument("--annotations_path", type=str, metavar="", help=f"JSON annotations path")
     parser.add_argument(
         "--annotator", type=str, default=annotator, metavar="", 
         help=f"Specific annotator key (if multiple, else use 'annotator_a') (default = {annotator})"
@@ -66,7 +63,14 @@ if __name__ == "__main__":
     annotations = get_json_data(args.annotations_path)
     annotations = annotations["annotations"][args.annotator]
 
-    durations = [i["end"]-i["start"] for segments in list(annotations.values()) for i in segments.values()]
+    if not AudioDataset.is_grouped_annotations(annotations):
+        durations = [i["end"]-i["start"] for segments in list(annotations.values()) for i in segments.values()]
+    else:
+        durations = []
+        for groups in list(annotations.values()):
+            for segment in groups.values():
+                for i in segment.values(): durations.append(i["end"] - i["start"])
+
     durations = np.asarray(durations).reshape(-1, 1)
     cluster_model = KMeans(
         NUM_CLUSTERS, 
