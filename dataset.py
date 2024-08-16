@@ -262,7 +262,7 @@ class AudioDataset(Dataset):
         classes = targets[:, 1].long()
         cw = targets[:, 2:-1]
         grid_idx = ((cw[:, 0] / sample_duration) * fmap_shape) + offset.squeeze(dim=-1)
-        grid_idx = grid_idx.long().clip(min=0, max=fmap_shape)
+        grid_idx = grid_idx.long().clip(min=0, max=fmap_shape-1)
         anchors = anchors[anchor_idx]
         indices = [batch_idx, grid_idx, anchor_idx]
         return indices, classes, cw
