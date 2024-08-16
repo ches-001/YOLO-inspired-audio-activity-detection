@@ -16,8 +16,6 @@ from typing import *
 
 SEED = 42
 CONFIG_PATH = "config/config.yaml"
-TRAIN_DATA_PATH = "dataset/train"
-EVAL_DATA_PATH = "dataset/eval"
 NUM_WORKERS = os.cpu_count()
 np.random.seed(SEED)
 random.seed(SEED)
@@ -88,11 +86,15 @@ def make_lr_scheduler(optimizer: torch.optim.Optimizer, config: Dict[str, Any]) 
 
 def run(config: Dict[str, Any]):
     device = config["train_config"]["device"] if torch.cuda.is_available() else "cpu"
-    annotations = load_annotations(config["train_config"]["annotation_file_path"])
+    data_path = config["train_config"]["dataset_path"]
+    annotation_file = config["train_config"]["annotation_file"]
+    train_data_path = os.path.join(data_path, "train")
+    eval_data_path = os.path.join(data_path, "eval")
+    annotations = load_annotations(os.path.join(data_path, "annotations", annotation_file))
     annotator = config["train_config"]["annotator"]
 
-    train_dataset = make_dataset(TRAIN_DATA_PATH, config, annotations=annotations["annotations"][annotator])
-    eval_dataset = make_dataset(EVAL_DATA_PATH, config, annotations=annotations["annotations"][annotator])
+    train_dataset = make_dataset(train_data_path, config, annotations=annotations["annotations"][annotator])
+    eval_dataset = make_dataset(eval_data_path, config, annotations=annotations["annotations"][annotator])
     train_dataloader = make_dataloader(train_dataset, config)
     eval_dataloader = make_dataloader(eval_dataset, config)
 
@@ -105,9 +107,10 @@ def run(config: Dict[str, Any]):
     if config["train_config"]["use_lr_scheduler"]:
         lr_scheduler = make_lr_scheduler(optimizer, config)
 
-    annotation_filename = config["train_config"]["annotation_file_path"].split("/")[-1].replace(".json", "")
-    model_path = config["train_config"]["model_path"]
-    metrics_path = config["train_config"]["metrics_path"]
+    annotation_filename = annotation_file.replace(".json", "")
+    dataset_name = data_path.split("/")[-1]
+    model_path = os.path.join(config["train_config"]["model_path"], dataset_name)
+    metrics_path = os.path.join(config["train_config"]["metrics_path"], dataset_name)
     backbone = config["backbone"]
     block_layers = config["block_layers"]
     blocks_str = "_".join(map(lambda x : str(x), block_layers))

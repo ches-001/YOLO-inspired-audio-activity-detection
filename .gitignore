@@ -2,12 +2,7 @@
 env.env
 venv
 model_predictions
-dataset/shards_data
-dataset/data
-dataset/train
-dataset/eval
-dataset/test
-dataset/annotations/client_annotation.json
+dataset
 notebook_outputs
 saved_model
 **/__pycache__

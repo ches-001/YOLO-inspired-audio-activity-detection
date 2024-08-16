@@ -16,7 +16,6 @@ class AudioDataset(Dataset):
             sample_rate: int=22_050,
             extension: str="wav",
             ignore_index: int=-100,
-            grouped_annotation: bool=False
         ):
         self.audios_path = audios_path
         self.sample_duration = sample_duration
@@ -24,7 +23,6 @@ class AudioDataset(Dataset):
         self.extension = extension
         self.ignore_index = ignore_index
         self.orig_annotations = annotations
-        self.grouped_annotation = grouped_annotation
         self.label_counts = {}
         self.label2idx = {}
         self._samples = []
@@ -32,7 +30,7 @@ class AudioDataset(Dataset):
         audio_filenames = [i.replace(f".{extension}", "") for i in os.listdir(self.audios_path)]
         annotations = {k:v for k, v in self.orig_annotations.items() if k in audio_filenames}
 
-        if not grouped_annotation:
+        if not self.is_grouped_annotations(annotations):
             self._index_samples(annotations)
         else:
             self._index_grouped_samples(annotations)
@@ -143,8 +141,9 @@ class AudioDataset(Dataset):
         class_counts = {}
         for filename in tqdm.tqdm(annotations.keys()):
             groups = annotations[filename]
+            group_keys = sorted(list(groups.keys()), key=lambda k : int(k.split("-")[-1]))
             gmin, gmax = 0, self.sample_duration
-            for group in groups.keys():
+            for group in group_keys:
                 annotation = groups[group]
                 segment_keys = sorted(list(annotation.keys()))
                 sample = []
@@ -167,6 +166,14 @@ class AudioDataset(Dataset):
         unique_classes = sorted(unique_classes)
         self.label2idx = {label:i for i, label in enumerate(unique_classes)}
         self.label_counts = {k:class_counts[k] for k in unique_classes}
+
+    
+    def is_grouped_annotations(self, annotations: Dict[str, Any]) -> bool:
+        filenames = list(annotations.keys())
+        groups_or_segments = annotations[filenames[0]]
+        ks = list(groups_or_segments.keys())
+        return ks[0].startswith("group")
+
 
 
     @staticmethod

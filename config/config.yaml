@@ -53,9 +53,10 @@ resnet_config:
   block: BasicBlock
 
 train_config:
-  annotation_file_path: dataset/annotations/MD_mapping.json
+  dataset_path: dataset/openbmat
+  annotation_file: MD_mapping.json
   annotator: annotator_a
-  batch_size: 32
+  batch_size: 4
   device: cuda
   epochs: 320
 
