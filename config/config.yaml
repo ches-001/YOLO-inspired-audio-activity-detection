@@ -49,13 +49,13 @@ new_sample_rate: 16000
 scale_input: true
 taper_input: true
 taper_window: hann
+audio_extension: wav
 
 train_config:
   dataset_path: dataset/ivy
   annotation_file: annotation.json
   annotator: annotator_a
   batch_size: 32
-  audio_extension: wav
   device: cuda
   epochs: 320
 
