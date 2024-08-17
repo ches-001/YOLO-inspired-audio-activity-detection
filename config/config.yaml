@@ -60,7 +60,7 @@ train_config:
 
   loss_config:
     alpha: null
-    anchor_t: 4
+    anchor_t: 1.4
     batch_scale_loss: false
     box_w: 0.1
     class_w: 0.3
