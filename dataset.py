@@ -1,11 +1,14 @@
 import os
 import tqdm
+import logging
 import torch
 import torchaudio
 import numpy as np
 from torch.utils.data import Dataset
 from typing import *
 
+
+logger = logging.getLogger(__name__)
 
 class AudioDataset(Dataset):
     def __init__(
@@ -120,6 +123,13 @@ class AudioDataset(Dataset):
         for filename in tqdm.tqdm(annotations.keys()):
             annotation = annotations[filename]
             segment_keys = sorted(list(annotation.keys()))
+            file_duration = annotation[segment_keys[-1]["end"]] - annotation[segment_keys[0]["start"]]
+            if file_duration > self.sample_duration:
+                logger.warn(
+                    f"duration of {filename} is more than {self.sample_duration} "
+                    "and will not be included in the processed dataset"
+                )
+                continue
             sample = []
             for key in segment_keys:
                 _class = annotation[key]["class"]
@@ -152,6 +162,13 @@ class AudioDataset(Dataset):
             for group in group_keys:
                 annotation = groups[group]
                 segment_keys = sorted(list(annotation.keys()))
+                group_duration = annotation[segment_keys[-1]["end"]] - annotation[segment_keys[0]["start"]]
+                if group_duration > self.sample_duration:
+                    logger.warn(
+                        f"the duration of {group} of {filename} is more than {self.sample_duration} "
+                        "and will not be included in the processed dataset"
+                    )
+                    continue
                 sample = []
                 for key in segment_keys:
                     _class = annotation[key]["class"]
