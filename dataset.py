@@ -49,18 +49,23 @@ class AudioDataset(Dataset):
             gmin, _ = sample["group_minmax"]
         sample = sample["sample"]
 
-        sample_times = sample[:, :2].astype(float) - gmin
+        sample_times = sample[:, :2].astype(float)
         sample_classes = sample[:, -1]
         filepath = os.path.join(self.audios_path, f"{filename}.{self.extension}")
         audio_start, audio_end = sample_times[0][0], sample_times[-1][1]
-        audio_start = float(audio_start)
-        audio_end = float(audio_end)
         audio_tensor, _ = torchaudio.load(
             filepath,
             frame_offset=int(audio_start * self.sample_rate),
             num_frames=int((audio_end - audio_start) * self.sample_rate),
             backend="soundfile"
         )
+        # scale by gmain (applicable to grouped annotations to ensure start and ends are within 
+        # range of 0 and sample duration), inotherwords, treating each group as its own seperate
+        # audio file with duration equal to sample duration (default to 60secs). if annotations
+        # not grouped, then gmin = 0.
+        audio_start, audio_end = audio_start - gmin, audio_end - gmin
+        sample_times -= gmin
+
         if audio_tensor.shape[-1] > (self.sample_duration * self.sample_rate):
             raise Exception(
                 f"audio sample is more than {self.sample_duration}, ensure that "
