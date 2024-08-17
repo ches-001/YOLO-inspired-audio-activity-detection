@@ -1,17 +1,16 @@
 anchors:
   lg:
-  - 44.70780701754382
-  - 52.36519855595674
-  - 59.91998569384765
+  - 43.19310559006211
+  - 50.99557251908398
+  - 59.81746359223327
   md:
-  - 21.138245614035124
-  - 28.70468354430382
-  - 36.84896788990825
+  - 19.551036269430053
+  - 27.203208722741433
+  - 35.17562231759656
   sm:
-  - 3.2617021276596105
-  - 8.600302233902823
-  - 14.432620481927781
-
+  - 2.650371318822014
+  - 7.44449691991786
+  - 12.867792792792798
 backbone: custom
 block_layers: [1, 1, 1, 1]
 resnet_config:
@@ -44,7 +43,7 @@ mfcc_config:
 
 num_anchors: 3
 sample_duration: 60
-sample_rate: 44100
+sample_rate: 22050
 new_sample_rate: 16000
 scale_input: true
 taper_input: true
@@ -52,8 +51,8 @@ taper_window: hann
 audio_extension: wav
 
 train_config:
-  dataset_path: dataset/ivy
-  annotation_file: annotation.json
+  dataset_path: dataset/openbmat
+  annotation_file: MD_mapping.json
   annotator: annotator_a
   batch_size: 32
   device: cuda
