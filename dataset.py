@@ -123,7 +123,7 @@ class AudioDataset(Dataset):
         for filename in tqdm.tqdm(annotations.keys()):
             annotation = annotations[filename]
             segment_keys = sorted(list(annotation.keys()))
-            file_duration = annotation[segment_keys[-1]["end"]] - annotation[segment_keys[0]["start"]]
+            file_duration = annotation[segment_keys[-1]]["end"] - annotation[segment_keys[0]]["start"]
             if file_duration > self.sample_duration:
                 logger.warn(
                     f"duration of {filename} is more than {self.sample_duration} "
@@ -162,7 +162,7 @@ class AudioDataset(Dataset):
             for group in group_keys:
                 annotation = groups[group]
                 segment_keys = sorted(list(annotation.keys()))
-                group_duration = annotation[segment_keys[-1]["end"]] - annotation[segment_keys[0]["start"]]
+                group_duration = annotation[segment_keys[-1]]["end"] - annotation[segment_keys[0]]["start"]
                 if group_duration > self.sample_duration:
                     logger.warn(
                         f"the duration of {group} of {filename} is more than {self.sample_duration} "
