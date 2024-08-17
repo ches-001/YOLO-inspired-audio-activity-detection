@@ -1,5 +1,6 @@
 import warnings
 warnings.filterwarnings(action="ignore")
+import logging
 import os
 import yaml
 import json
@@ -161,5 +162,8 @@ def run(config: Dict[str, Any]):
 if __name__ == "__main__":
     # os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
     # torch.autograd.set_detect_anomaly(True)
+    LOG_FORMAT="%(asctime)s %(levelname)s %(filename)s: %(message)s"
+    LOG_DATE_FORMAT="%Y-%m-%d %H:%M:%S"
+    logging.basicConfig(level=logging.WARNING, format=LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
     config = load_config()
     run(config)
