@@ -102,6 +102,8 @@ class AudioDetectionLoss(nn.Module):
         metrics_dict["aggregate_loss"] = loss.item()
         metrics_dict["mean_ciou"] = metrics_df["mean_ciou"].mean()
         metrics_dict["conf_loss"] = metrics_df["conf_loss"].mean()
+        metrics_dict["avg_pos_conf"] = metrics_df["avg_pos_conf"].mean()
+        metrics_dict["avg_neg_conf"] = metrics_df["avg_neg_conf"].mean()
         metrics_dict["class_loss"] = metrics_df["class_loss"].mean()
         metrics_dict["accuracy"] = metrics_df["accuracy"].mean()
         metrics_dict["f1"] = metrics_df["f1"].mean()
@@ -140,6 +142,8 @@ class AudioDetectionLoss(nn.Module):
         t_conf[batch_idx, grid_idx, anchor_idx] = ciou.detach()
         p_conf = preds[..., 0]
         conf_loss = self.conf_lossfn(p_conf, t_conf)
+        avg_pos_conf = p_conf[t_conf > 0].sigmoid().mean().item()
+        avg_neg_conf = p_conf[t_conf == 0].sigmoid().mean().item()
 
         # class loss
         cls_mask = t_classes != self.ignore_index
@@ -172,6 +176,8 @@ class AudioDetectionLoss(nn.Module):
         metrics_dict = {}
         metrics_dict["mean_ciou"] = ciou.mean().item()
         metrics_dict["conf_loss"] = conf_loss.item()
+        metrics_dict["avg_pos_conf"] = avg_pos_conf
+        metrics_dict["avg_neg_conf"] = avg_neg_conf
         metrics_dict["class_loss"] = class_loss.item()
         metrics_dict["accuracy"] = accuracy
         metrics_dict["f1"] = f1
