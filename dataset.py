@@ -4,11 +4,67 @@ import logging
 import torch
 import torchaudio
 import numpy as np
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, ConcatDataset
 from typing import *
 
-
 logger = logging.getLogger(__name__)
+
+
+class AudioConcatDataset(ConcatDataset):
+    datasets: List["AudioDataset"]
+
+    def __init__(self, *args, **kwargs):
+        super(AudioConcatDataset, self).__init__(*args, **kwargs)
+        self.class2idx, self.class_counts = self.__combine_class_counts()
+
+
+    def __add__(self, other: Union["AudioDataset", "AudioConcatDataset"]) -> "AudioConcatDataset":
+        if not isinstance(other, (AudioDataset, AudioConcatDataset)):
+            raise ValueError(f"cannot add / concat {self.__class__.__name__} and {type(other)} together")
+        return AudioConcatDataset([self, other])
+    
+
+    def __combine_class_counts(self) -> Tuple[Dict[str, int], Dict[str, int]]:
+        class2idx = {}
+        class_counts = {}
+        for dataset in self.datasets:
+            classnames = list(dataset.class_counts.keys())
+            for _cn in classnames:
+                if _cn not in class2idx.keys():
+                    class2idx[_cn] = dataset.class2idx[_cn]
+                    class_counts[_cn] = dataset.class_counts[_cn]
+                else:
+                    class2idx[_cn] += dataset.class2idx[_cn]
+                    class_counts[_cn] += dataset.class_counts[_cn]
+
+        unique_classes = sorted(list(class2idx.keys()))
+        class2idx = {label:i for i, label in enumerate(unique_classes)}
+        class_counts = {k:class_counts[k] for k in unique_classes}
+
+        for dataset in self.datasets:
+            dataset.class2idx = class2idx
+
+        return class2idx, class_counts
+
+
+    def get_class_weights(self, device: Optional[str]=None) -> torch.Tensor:
+        if not device: device = "cpu"
+        label_weights = list(self.class_counts.values())
+        label_weights = torch.tensor(label_weights, dtype=torch.float32, device=device)
+        label_weights = label_weights.sum() / (label_weights.shape[0] * label_weights)
+        return label_weights
+    
+
+    @classmethod
+    def make_combo_dataset(cls, audio_paths: List[str], annotations_list: List[Dict[str, Any]], **kwargs):
+        datasets = None
+        for audio_path, annotations in zip(audio_paths, annotations_list):
+            if datasets is None:
+                datasets = AudioDataset(audio_path, annotations, **kwargs)
+            else:
+                datasets += AudioDataset(audio_path, annotations, **kwargs)
+        return datasets
+
 
 class AudioDataset(Dataset):
     def __init__(
@@ -25,23 +81,22 @@ class AudioDataset(Dataset):
         self.sample_rate = sample_rate
         self.extension = extension
         self.ignore_index = ignore_index
-        self.orig_annotations = annotations
-        self.label_counts = {}
-        self.label2idx = {}
-        self._samples = []
-        self.label_counts = {}
         audio_filenames = [i.replace(f".{extension}", "") for i in os.listdir(self.audios_path)]
-        annotations = {k:v for k, v in self.orig_annotations.items() if k in audio_filenames}
+        annotations = {k:v for k, v in annotations.items() if k in audio_filenames}
 
         if not AudioDataset.is_grouped_annotations(annotations):
-            self._index_samples(annotations)
+            self._samples, self.class2idx, self.class_counts = self._index_samples(annotations)
         else:
-            self._index_grouped_samples(annotations)
+            self._samples, self.class2idx, self.class_counts = self._index_grouped_samples(annotations)
         self.ignore_index = ignore_index
 
 
     def __len__(self) -> int:
         return len(self._samples)
+    
+
+    def __add__(self, other: "AudioDataset") -> AudioConcatDataset:
+        return AudioConcatDataset([self, other])
 
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -80,7 +135,7 @@ class AudioDataset(Dataset):
             audio_tensor = audio_tensor.mean(dim=0).unsqueeze(0)
 
         sample_classes = torch.from_numpy(
-            np.vectorize(lambda label : self.label2idx[label])(sample_classes)
+            np.vectorize(lambda label : self.class2idx[label])(sample_classes)
         ).to(torch.int64) 
         # sample segment length instead of sample segment end (aspar YOLO convention)
         sample_times[:, 1] = (sample_times[:, 1] - sample_times[:, 0])
@@ -110,14 +165,14 @@ class AudioDataset(Dataset):
 
     def get_class_weights(self, device: Optional[str]=None) -> torch.Tensor:
         if not device: device = "cpu"
-        label_weights = list(self.label_counts.values())
+        label_weights = list(self.class_counts.values())
         label_weights = torch.tensor(label_weights, dtype=torch.float32, device=device)
         label_weights = label_weights.sum() / (label_weights.shape[0] * label_weights)
         return label_weights
 
 
-    def _index_samples(self, annotations: Dict[str, Any]):
-        self._samples = []
+    def _index_samples(self, annotations: Dict[str, Any]) -> Tuple[List[Any], Dict[str, int], Dict[str, int]]:
+        _samples = []
         unique_classes = []
         class_counts = {}
         for filename in tqdm.tqdm(annotations.keys()):
@@ -135,6 +190,7 @@ class AudioDataset(Dataset):
             sample = []
             for key in segment_keys:
                 _class = annotation[key]["class"]
+                _class = _class.strip().replace(" ", "-")
                 if _class not in unique_classes:
                     unique_classes.append(_class)
                 
@@ -146,15 +202,16 @@ class AudioDataset(Dataset):
 
             sample = np.asarray(sample)
             sample = {"filename": filename, "sample":sample}
-            self._samples.append(sample)
+            _samples.append(sample)
         
         unique_classes = sorted(unique_classes)
-        self.label2idx = {label:i for i, label in enumerate(unique_classes)}
-        self.label_counts = {k:class_counts[k] for k in unique_classes}
+        class2idx = {label:i for i, label in enumerate(unique_classes)}
+        class_counts = {k:class_counts[k] for k in unique_classes}
+        return _samples, class2idx, class_counts
 
     
-    def _index_grouped_samples(self, annotations: Dict[str, Any]):
-        self._samples = []
+    def _index_grouped_samples(self, annotations: Dict[str, Any]) -> Tuple[List[Any], Dict[str, int], Dict[str, int]]:
+        _samples = []
         unique_classes = []
         class_counts = {}
         for filename in tqdm.tqdm(annotations.keys()):
@@ -176,6 +233,7 @@ class AudioDataset(Dataset):
                 sample = []
                 for key in segment_keys:
                     _class = annotation[key]["class"]
+                    _class = _class.strip().replace(" ", "-")
                     if _class not in unique_classes:
                         unique_classes.append(_class)
                     
@@ -187,12 +245,13 @@ class AudioDataset(Dataset):
 
                 sample = np.asarray(sample)
                 sample = {"filename": filename, "group_minmax": np.asarray([gmin, gmax]), "sample": sample}
-                self._samples.append(sample)
+                _samples.append(sample)
                 gmin, gmax = gmax, gmax+self.sample_duration
         
         unique_classes = sorted(unique_classes)
-        self.label2idx = {label:i for i, label in enumerate(unique_classes)}
-        self.label_counts = {k:class_counts[k] for k in unique_classes}
+        class2idx = {label:i for i, label in enumerate(unique_classes)}
+        class_counts = {k:class_counts[k] for k in unique_classes}
+        return _samples, class2idx, class_counts
 
 
     @staticmethod    

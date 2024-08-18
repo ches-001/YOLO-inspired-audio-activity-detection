@@ -18,7 +18,6 @@ class TrainerPipeline:
         optimizer: torch.optim.Optimizer,
         model_path: str,
         metrics_path: str,
-        annotation_filename: str,
         device: str="cpu",
         ema_smoothener: Optional[EMAParamsSmoothener]=None
     ):
@@ -27,10 +26,9 @@ class TrainerPipeline:
         self.loss_fn = loss_fn
         self.optimizer = optimizer
         self.device =  device
-        self.annotation_filename = annotation_filename
         self.ema_smoothener = ema_smoothener
-        self.model_path =  os.path.join(model_path, self.annotation_filename)
-        self.metrics_path = os.path.join(metrics_path, self.annotation_filename)
+        self.model_path =  model_path
+        self.metrics_path = metrics_path
         self.saved_model_path = os.path.join(self.model_path, f"{self.model.__class__.__name__}.pth.tar")
 
         # collect metrics in this list of dicts

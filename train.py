@@ -2,6 +2,7 @@ import warnings
 warnings.filterwarnings(action="ignore")
 import logging
 import os
+import glob
 import yaml
 import json
 import random
@@ -9,7 +10,7 @@ import numpy as np
 import torch
 from datetime import datetime
 from torch.utils.data import DataLoader
-from dataset import AudioDataset
+from dataset import AudioDataset, AudioConcatDataset
 from modules import AudioDetectionNetwork, AudioDetectionLoss
 from smoothener import EMAParamsSmoothener
 from pipeline import TrainerPipeline
@@ -32,20 +33,30 @@ def load_config() -> Dict[str, Any]:
     f.close()
     return config
 
-def load_annotations(path: str) -> Dict[str, Any]:
+def load_annotations(data_path: str, annotator: str) -> Dict[str, Any]:
+    path = os.path.join(data_path, "annotations", "annotation.json")
     with open(path, "r") as f:
         data = json.load(f)
     f.close()
-    return data
+    return data["annotations"][annotator]
 
-def make_dataset(path: str, config: Dict[str, Any], annotations: Dict[str, Any]) -> AudioDataset:
+def make_dataset(
+        path: Union[str, List[str]], 
+        annotations: Union[Dict[str, Any], List[Dict[str, Any]]], 
+        config: Dict[str, Any]) -> Union[AudioDataset, AudioConcatDataset]:
+    
     kwargs = dict(
-        annotations=annotations, 
         sample_duration=config["sample_duration"],
         sample_rate=config["sample_rate"],
         extension=config["audio_extension"],
     )
-    return AudioDataset(path, **kwargs)
+    if isinstance(path, str) and isinstance(annotations, dict):
+        dataset = AudioDataset(path, annotations, **kwargs)
+    elif isinstance(path, list) and isinstance(annotations, list):
+        dataset = AudioConcatDataset.make_combo_dataset(path, annotations, **kwargs)
+    else:
+        raise Exception("expects path and annotations to be str and dict or list of str and list of dict")
+    return dataset
 
 def make_dataloader(dataset: AudioDataset, config: Dict[str, Any]) -> DataLoader:
     kwargs = dict(
@@ -87,19 +98,48 @@ def make_lr_scheduler(optimizer: torch.optim.Optimizer, config: Dict[str, Any]) 
 
 def run(config: Dict[str, Any]):
     device = config["train_config"]["device"] if torch.cuda.is_available() else "cpu"
-    data_path = config["train_config"]["dataset_path"]
-    annotation_file = config["train_config"]["annotation_file"]
-    train_data_path = os.path.join(data_path, "train")
-    eval_data_path = os.path.join(data_path, "eval")
-    annotations = load_annotations(os.path.join(data_path, "annotations", annotation_file))
+    data_path: str = config["train_config"]["dataset_path"]
+    split_data_paths = data_path.split(";")
     annotator = config["train_config"]["annotator"]
 
-    train_dataset = make_dataset(train_data_path, config, annotations=annotations["annotations"][annotator])
-    eval_dataset = make_dataset(eval_data_path, config, annotations=annotations["annotations"][annotator])
+    if (not data_path.endswith("*")) and len(split_data_paths) == 1:
+        train_data_path = os.path.join(data_path, "train")
+        eval_data_path = os.path.join(data_path, "eval")
+        annotations = load_annotations(data_path, annotator)
+        dataset_name = data_path.split("/")[-1]
+        model_path = os.path.join(config["train_config"]["model_path"], dataset_name)
+        metrics_path = os.path.join(config["train_config"]["metrics_path"], dataset_name)
+        train_dataset = make_dataset(train_data_path, annotations, config)
+        eval_dataset = make_dataset(eval_data_path, annotations, config)
+
+    elif data_path.endswith("*") or len(split_data_paths) > 1:
+        annotations_list, train_data_paths, eval_data_paths = [], [], []
+        dataset_name = ""
+        if split_data_paths > 1:
+            data_paths = split_data_paths
+        else:
+            data_paths = glob.glob(data_path)
+        for i, path in enumerate(data_paths):
+            if not os.path.exists(path):
+                raise OSError(f"path {path} not found")
+            annotations_list.append(load_annotations(path, annotator))
+            train_data_paths.append(os.path.join(path, "train"))
+            eval_data_paths.append(os.path.join(path, "eval"))
+            dataset_name += path.split("/")[-1]
+            if i != len(data_paths) - 1:
+                dataset_name += "-"
+        train_dataset = make_dataset(train_data_paths, annotations_list, config)
+        eval_dataset = make_dataset(eval_data_paths, annotations_list, config)
+        model_path = os.path.join(config["train_config"]["model_path"], dataset_name)
+        metrics_path = os.path.join(config["train_config"]["metrics_path"], dataset_name)
+
+    else:
+        raise Exception(f"Invalid data path {data_path}")
+
     train_dataloader = make_dataloader(train_dataset, config)
     eval_dataloader = make_dataloader(eval_dataset, config)
 
-    num_classes = len(train_dataset.label2idx)
+    num_classes = len(train_dataset.class2idx)
     model = make_model(config, num_classes=num_classes)
     model.to(device)
     loss_fn = make_loss_fn(config, num_classes=num_classes, class_weights=train_dataset.get_class_weights(device=device))
@@ -108,10 +148,6 @@ def run(config: Dict[str, Any]):
     if config["train_config"]["use_lr_scheduler"]:
         lr_scheduler = make_lr_scheduler(optimizer, config)
 
-    annotation_filename = annotation_file.replace(".json", "")
-    dataset_name = data_path.split("/")[-1]
-    model_path = os.path.join(config["train_config"]["model_path"], dataset_name)
-    metrics_path = os.path.join(config["train_config"]["metrics_path"], dataset_name)
     backbone = config["backbone"]
     block_layers = config["block_layers"]
     blocks_str = "_".join(map(lambda x : str(x), block_layers))
@@ -133,7 +169,6 @@ def run(config: Dict[str, Any]):
         optimizer, 
         model_path=model_path, 
         metrics_path=metrics_path, 
-        annotation_filename=annotation_filename,
         device=device,
         ema_smoothener=ema_smoothener
     )
