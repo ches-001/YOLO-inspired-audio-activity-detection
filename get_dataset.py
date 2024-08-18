@@ -19,16 +19,15 @@ def convert_audio(audiofile: str, dest_ext: str="wav", target_sample_rate: int=2
     file_ext = audiofile.split(".")[-1]
     audio_tensor, sample_rate = torchaudio.load(audiofile, backend="soundfile")
 
+    if sample_rate == target_sample_rate and file_ext == dest_ext:
+        return
+    
     if sample_rate != target_sample_rate:
         if torch.cuda.is_available():
             audio_tensor = audio_tensor.to("cuda")
         audio_tensor = torchaudio.functional.resample(
             audio_tensor, sample_rate, target_sample_rate
         ).cpu()
-
-    if file_ext == dest_ext:
-        return
-
     torchaudio.save(
         audiofile.replace(f".{file_ext}", f".{dest_ext}"), 
         src=audio_tensor, 
