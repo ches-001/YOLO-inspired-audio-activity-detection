@@ -125,7 +125,7 @@ if __name__ == "__main__":
                 os.makedirs(dataset_dir)
             kaggle.api.dataset_download_cli(dataset_url.split("datasets/")[-1], path=dataset_dir, unzip=True)
         
-        if not os.path.exist(dataset_dir):
+        if not os.path.exists(dataset_dir):
             raise OSError(f"path: {dataset_dir} does not exist")
         audio_files = glob_all_exts(dataset_dir, supported_exts, recursive=True)
         annotation_files = glob.glob(os.path.join(dataset_dir, "**", ".json"), recursive=True)
