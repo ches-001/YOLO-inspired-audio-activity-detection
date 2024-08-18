@@ -33,7 +33,8 @@ def convert_audio(audiofile: str, dest_ext: str="wav", target_sample_rate: int=2
         src=audio_tensor, 
         sample_rate=sample_rate
     )
-    os.remove(audiofile)
+    if file_ext != dest_ext:
+        os.remove(audiofile)
 
 async def format_audio_coro(
         audiofile: str, 
