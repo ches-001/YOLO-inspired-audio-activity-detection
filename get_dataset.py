@@ -77,7 +77,7 @@ async def format_and_resample(
 
 
 if __name__ == "__main__":
-    dataset_url = ""#"https://www.kaggle.com/datasets/chinonsoonah/openbmat"
+    dataset_url = ""
     dataset_name = "openbmat"
     target_sample_rate = 22050
     supported_exts = ["mp3", "wav"]
