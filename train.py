@@ -115,7 +115,7 @@ def run(config: Dict[str, Any]):
     elif data_path.endswith("*") or len(split_data_paths) > 1:
         annotations_list, train_data_paths, eval_data_paths = [], [], []
         dataset_name = ""
-        if split_data_paths > 1:
+        if len(split_data_paths) > 1:
             data_paths = split_data_paths
         else:
             data_paths = glob.glob(data_path)
