@@ -53,7 +53,7 @@ audio_extension: wav
 train_config:
   dataset_path: dataset/ivy
   annotator: annotator_a
-  batch_size: 4
+  batch_size: 32
   device: cuda
   epochs: 600
 
