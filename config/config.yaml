@@ -43,7 +43,7 @@ mfcc_config:
 
 num_anchors: 3
 sample_duration: 60
-sample_rate: 44100
+sample_rate: 22050
 new_sample_rate: 16000
 scale_input: true
 taper_input: true
@@ -51,7 +51,7 @@ taper_window: hann
 audio_extension: wav
 
 train_config:
-  dataset_path: dataset/ivy
+  dataset_path: dataset/openbmat
   annotator: annotator_a
   batch_size: 32
   device: cuda
