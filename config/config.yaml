@@ -11,6 +11,7 @@ anchors:
   - 2.650371318822014
   - 7.44449691991786
   - 12.867792792792798
+
 backbone: custom
 block_layers: [1, 1, 1, 1]
 resnet_config:
@@ -42,6 +43,7 @@ mfcc_config:
   n_mfcc: 32
 
 num_anchors: 3
+train_anchors: false
 sample_duration: 60
 sample_rate: 22050
 new_sample_rate: 16000

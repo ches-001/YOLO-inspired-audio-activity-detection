@@ -36,10 +36,10 @@ class AudioDetectionNetwork(nn.Module):
             **self.config["mfcc_config"]
         )
         self.register_buffer("taper_window", torch.empty(0), persistent=True)
-
-        self.sm_anchors = nn.Parameter(torch.FloatTensor(self.config["anchors"]["sm"]), requires_grad=True)
-        self.md_anchors = nn.Parameter(torch.FloatTensor(self.config["anchors"]["md"]), requires_grad=True)
-        self.lg_anchors = nn.Parameter(torch.FloatTensor(self.config["anchors"]["lg"]), requires_grad=True)
+        train_anchors = self.config["train_anchors"]
+        self.sm_anchors = nn.Parameter(torch.FloatTensor(self.config["anchors"]["sm"]), requires_grad=train_anchors)
+        self.md_anchors = nn.Parameter(torch.FloatTensor(self.config["anchors"]["md"]), requires_grad=train_anchors)
+        self.lg_anchors = nn.Parameter(torch.FloatTensor(self.config["anchors"]["lg"]), requires_grad=train_anchors)
 
         if self.config["backbone"] == "custom":
             self.feature_extractor = CustomBackBone(
@@ -73,7 +73,7 @@ class AudioDetectionNetwork(nn.Module):
         # resample signal (input (x) size: (N, channels, n_time))
         x = self.resampler(x)
 
-        # taper signal:
+        # taper the ends of the input signal:
         if self.config["taper_input"]:
             if self.taper_window.numel() == 0:
                 self.taper_window = getattr(torch, f"{self.config['taper_window']}_window")(
@@ -83,9 +83,10 @@ class AudioDetectionNetwork(nn.Module):
                 )
             x = x * self.taper_window[None, None, :].tile(1, x.shape[1], 1)
             
-        # extra mel-spectral features (mel-spectrogram and MFCC)
-        mel_spectrogram = self.melspectogram_tfmr(x)              # size: (N, channels, n_freq, n_time)
-        mfcc = self.mfcc_tfmr(x)                                  # size: (N, channels, n_freq, n_time)
+        # mel_spectrogram size: (N, channels, n_freq, n_time)
+        # mfcc size: (N, channels, n_freq, n_time)
+        mel_spectrogram = self.melspectogram_tfmr(x)
+        mfcc = self.mfcc_tfmr(x)
         mel_spectrogram = self.power_to_db_tfmr(mel_spectrogram)
         mfcc = self.power_to_db_tfmr(mfcc)
 
@@ -93,70 +94,50 @@ class AudioDetectionNetwork(nn.Module):
             mel_spectrogram = AudioDetectionNetwork.scale_input(mel_spectrogram)
             mfcc = AudioDetectionNetwork.scale_input(mfcc)
             
-        # spectro-temporal input goes to 2d conv network
-        # The spectral input is created by concatinating the mel-spectrogram with the MFCC
-        # to create a multi-channel spectro-temporal image
-        x_spectral = torch.cat((mel_spectrogram, mfcc), dim=1)    # size: (N, 2*channels, n_freq, n_time)
+        # x_spectral size: (N, 2*channels, n_freq, n_time)
+        x_spectral = torch.cat((mel_spectrogram, mfcc), dim=1)
         fmaps = self.feature_extractor(x_spectral)
         sm_scale, md_scale, lg_scale = self.multiscale_module(*fmaps)
 
-        batch_size, num_sm_segments, _ = sm_scale.shape
-        _, num_md_segments, _ = md_scale.shape
-        _, num_lg_segments, _ = lg_scale.shape
-        num_sm_anchors = self.sm_anchors.shape[0]
-        num_md_anchors = self.md_anchors.shape[0]
-        num_lg_anchors = self.lg_anchors.shape[0]
+        # process predictions at different scales
+        sm_preds = self.get_scale_pred(sm_scale, self.sm_anchors, input_size=x.shape[-1], spectral_size=x_spectral.shape[-1])
+        md_preds = self.get_scale_pred(md_scale, self.md_anchors, input_size=x.shape[-1], spectral_size=x_spectral.shape[-1])
+        lg_preds = self.get_scale_pred(lg_scale, self.lg_anchors, input_size=x.shape[-1], spectral_size=x_spectral.shape[-1])
 
-        sm_scale = sm_scale.reshape(batch_size, num_sm_segments, num_sm_anchors, -1)
-        md_scale = md_scale.reshape(batch_size, num_md_segments, num_md_anchors, -1)
-        lg_scale = lg_scale.reshape(batch_size, num_lg_segments, num_lg_anchors, -1)
-
-        # first index corresponds to objectness of each box
-        sm_objectness = sm_scale[..., :1]
-        md_objectness = md_scale[..., :1]
-        lg_objectness = lg_scale[..., :1]
-
-        # next `num_class` indexes correspond to class probabilities of each bbox
-        sm_class_proba = sm_scale[..., 1:1+self.num_classes]
-        md_class_proba = md_scale[..., 1:1+self.num_classes]
-        lg_class_proba = lg_scale[..., 1:1+self.num_classes]
-        
-        # second to last index corresponds to center of segment along the temporal axis
-        sm_stride = x_spectral.shape[-1] // sm_scale.shape[1]
-        md_stride = x_spectral.shape[-1] // md_scale.shape[1]
-        lg_stride = x_spectral.shape[-1] // lg_scale.shape[1]
-        center_scaler = x_spectral.shape[-1] / (x.shape[-1] / self.config["new_sample_rate"])
-        sm_1dgrid = self.get_1dgrid(num_sm_segments, device=x.device).unsqueeze(-1)
-        md_1dgrid = self.get_1dgrid(num_md_segments, device=x.device).unsqueeze(-1)
-        lg_1dgrid = self.get_1dgrid(num_lg_segments, device=x.device).unsqueeze(-1)
-        sm_center = (((sm_scale[..., -2:-1].sigmoid() * 2 - 0.5) + sm_1dgrid) * sm_stride) / center_scaler
-        md_center = (((md_scale[..., -2:-1].sigmoid() * 2 - 0.5) + md_1dgrid) * md_stride) / center_scaler
-        lg_center = (((lg_scale[..., -2:-1].sigmoid() * 2 - 0.5) + lg_1dgrid) * lg_stride) / center_scaler
-        # clip center values
-        sm_center = sm_center.clip(min=0, max=self.config["sample_duration"])
-        md_center = md_center.clip(min=0, max=self.config["sample_duration"])
-        lg_center = lg_center.clip(min=0, max=self.config["sample_duration"])
-
-        # last index of last dimension corresponds to segment duration / width
-        sm_width = (sm_scale[..., -1:].sigmoid() * 2).pow(2) * self.sm_anchors.unsqueeze(-1)
-        md_width = (md_scale[..., -1:].sigmoid() * 2).pow(2) * self.md_anchors.unsqueeze(-1)
-        lg_width = (lg_scale[..., -1:].sigmoid() * 2).pow(2) * self.lg_anchors.unsqueeze(-1)
-        # clip widths / durations
-        sm_width = sm_width.clip(min=0, max=self.config["sample_duration"])
-        md_width = md_width.clip(min=0, max=self.config["sample_duration"])
-        lg_width = lg_width.clip(min=0, max=self.config["sample_duration"])
-
-        # concatenate predictions at various scales
-        sm_preds = torch.cat((sm_objectness, sm_class_proba, sm_center, sm_width), dim=-1)
-        md_preds = torch.cat((md_objectness, md_class_proba, md_center, md_width), dim=-1)
-        lg_preds = torch.cat((lg_objectness, lg_class_proba, lg_center, lg_width), dim=-1)
         if not combine_scales:
             return sm_preds, md_preds, lg_preds
+        batch_size = x.shape[0]
         sm_preds = sm_preds.reshape(batch_size, -1, self.num_classes+3)
         md_preds = md_preds.reshape(batch_size, -1, self.num_classes+3)
         lg_preds = lg_preds.reshape(batch_size, -1, self.num_classes+3)
         preds = torch.cat((sm_preds, md_preds, lg_preds), dim=1).flatten(start_dim=1, end_dim=-2)
         return preds
+
+    def get_scale_pred(self, scale_pred: torch.Tensor, anchors: torch.Tensor, input_size: int, spectral_size: int):
+        batch_size, grid_size, _ = scale_pred.shape
+        num_anchors = anchors.shape[0]
+        scale_pred = scale_pred.reshape(batch_size, grid_size, num_anchors, -1)
+
+        # first index corresponds to objectness of each box
+        objectness = scale_pred[..., :1]
+
+        # next `num_class` indexes correspond to class probabilities of each bbox
+        class_proba = scale_pred[..., 1:1+self.num_classes]
+
+        # second to last index corresponds to center of segment along the temporal axis
+        stride = spectral_size // grid_size
+        center_scaler = spectral_size / (input_size / self.config["new_sample_rate"])
+        sm_1dgrid = self.get_1dgrid(grid_size, device=scale_pred.device).unsqueeze(-1)
+        centers = (scale_pred[..., -2:-1].sigmoid() * 2 - 0.5) + sm_1dgrid
+        centers = (centers * stride) / center_scaler
+
+        # last index of last dimension corresponds to segment duration / width
+        widths = (scale_pred[..., -1:].sigmoid() * 2).pow(2) * anchors.unsqueeze(-1)
+
+        centers = centers.clip(min=0, max=self.config["sample_duration"])
+        widths = widths.clip(min=0, max=self.config["sample_duration"])
+        pred = torch.cat((objectness, class_proba, centers, widths), dim=-1)
+        return pred
 
     def get_1dgrid(self, w: int, device: Union[str, torch.device, int]) -> torch.Tensor:
         xcoords = torch.arange(0, w)
