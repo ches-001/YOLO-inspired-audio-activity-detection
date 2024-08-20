@@ -81,7 +81,7 @@ train_config:
   lr_scheduler_config:
     T_0: 1000
     T_mult: 1
-    eta_min: 1.0e-06
+    eta_min: 5.0e-07
     name: CosineAnnealingWarmRestarts
 
   ema_config:
@@ -89,9 +89,9 @@ train_config:
     momentum: 0.002
     num_updates: 0
 
-  shuffle_samples: true
   use_ema: false
-  use_lr_scheduler: true
   verbose: true
+  shuffle_samples: true
+  use_lr_scheduler: true
   metrics_path: metrics
   model_path: saved_model
