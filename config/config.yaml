@@ -64,10 +64,10 @@ train_config:
     batch_scale_loss: false
     box_w: 0.1
     class_w: 0.3
-    conf_w: 5.0
+    conf_w: 1.0
     edge_t: 0.5
-    alpha: 0.25
-    gamma: 1.50
+    alpha: null
+    gamma: null
     label_smoothing: 0.08
     multi_label: true
 

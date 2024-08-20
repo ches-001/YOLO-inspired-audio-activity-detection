@@ -142,10 +142,11 @@ class AudioDetectionLoss(nn.Module):
         t_conf[batch_idx, grid_idx, anchor_idx] = ciou.detach()
         p_conf = preds[..., 0]
         conf_loss = self.conf_lossfn(p_conf, t_conf)
-        avg_pos_conf = p_conf[batch_idx, grid_idx, anchor_idx].sigmoid()
-        avg_neg_conf = p_conf[t_conf == 0].sigmoid().mean()
-        conf_loss = conf_loss + (0.1 * avg_neg_conf) + (0.1 * (ciou - avg_pos_conf).mean())
-        avg_pos_conf = avg_pos_conf.mean()
+        pos_conf = p_conf[batch_idx, grid_idx, anchor_idx].sigmoid()
+        neg_conf = p_conf[t_conf == 0].sigmoid()
+        conf_loss = conf_loss + (0.1 * neg_conf.pow(2).mean()) + (0.1 * (ciou - pos_conf).pow(2).mean())
+        avg_pos_conf = pos_conf.mean()
+        avg_neg_conf = neg_conf.mean()
 
         # class loss
         cls_mask = t_classes != self.ignore_index
