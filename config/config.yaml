@@ -53,7 +53,7 @@ taper_window: hann
 audio_extension: wav
 
 train_config:
-  dataset_path: dataset/openbmat
+  dataset_path: dataset/*
   annotator: annotator_a
   batch_size: 32
   device: cuda
@@ -76,7 +76,7 @@ train_config:
     eps: 1.0e-08
     lr: 0.001
     name: Adam
-    weight_decay: 0.001
+    weight_decay: 0.003
 
   lr_scheduler_config:
     T_0: 600
