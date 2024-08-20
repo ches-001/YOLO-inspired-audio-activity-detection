@@ -120,7 +120,6 @@ class AudioDetectionLoss(nn.Module):
         ) -> Tuple[Tuple[torch.Tensor, torch.Tensor, torch.Tensor], Dict[str, float]]:
         
         _device = preds.device
-        t_conf = torch.zeros(preds.shape[:-1], device=_device, dtype=preds.dtype)
         indices, t_classes, t_cw = AudioDataset.build_target_by_scale(
             targets, 
             preds.shape[1], 
@@ -139,12 +138,14 @@ class AudioDetectionLoss(nn.Module):
         ciou_loss = (1 - ciou).mean()
 
         # conf loss
+        t_conf = torch.zeros(preds.shape[:-1], device=_device, dtype=preds.dtype)
         t_conf[batch_idx, grid_idx, anchor_idx] = ciou.detach()
         p_conf = preds[..., 0]
         conf_loss = self.conf_lossfn(p_conf, t_conf)
-        avg_pos_conf = p_conf[t_conf > 0].sigmoid().mean()
+        avg_pos_conf = p_conf[batch_idx, grid_idx, anchor_idx].sigmoid()
         avg_neg_conf = p_conf[t_conf == 0].sigmoid().mean()
-        # conf_loss = conf_loss + (0.5 * avg_neg_conf) + (0.5 * (ciou.mean() - avg_pos_conf))
+        conf_loss = conf_loss + (0.1 * avg_neg_conf) + (0.1 * (ciou - avg_pos_conf).mean())
+        avg_pos_conf = avg_pos_conf.mean()
 
         # class loss
         cls_mask = t_classes != self.ignore_index

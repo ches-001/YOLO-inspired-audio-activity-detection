@@ -16,7 +16,7 @@ backbone: custom
 block_layers: [1, 1, 1, 1]
 resnet_config:
   block: BasicBlock
-dropout: 0.4
+dropout: 0.2
 
 melspectrogram_config:
   center: false
@@ -48,7 +48,7 @@ sample_duration: 60
 sample_rate: 22050
 new_sample_rate: 16000
 scale_input: true
-taper_input: true
+taper_input: false
 taper_window: hann
 audio_extension: wav
 
@@ -57,17 +57,17 @@ train_config:
   annotator: annotator_a
   batch_size: 32
   device: cuda
-  epochs: 600
+  epochs: 1000
 
   loss_config:
-    anchor_t: 3.44
+    anchor_t: 2.44
     batch_scale_loss: false
     box_w: 0.1
     class_w: 0.3
-    conf_w: 0.6
+    conf_w: 5.0
     edge_t: 0.5
-    alpha: null
-    gamma: null
+    alpha: 0.25
+    gamma: 1.50
     label_smoothing: 0.08
     multi_label: true
 
@@ -76,10 +76,10 @@ train_config:
     eps: 1.0e-08
     lr: 0.001
     name: Adam
-    weight_decay: 0.003
+    weight_decay: 0.002
 
   lr_scheduler_config:
-    T_0: 600
+    T_0: 1000
     T_mult: 1
     eta_min: 1.0e-06
     name: CosineAnnealingWarmRestarts
