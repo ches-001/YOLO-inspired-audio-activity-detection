@@ -138,8 +138,9 @@ class AudioDetectionLoss(nn.Module):
         ciou_loss = (1 - ciou).mean()
 
         # conf loss
+        ciou = ciou.detach()
         t_conf = torch.zeros(preds.shape[:-1], device=_device, dtype=preds.dtype)
-        t_conf[batch_idx, grid_idx, anchor_idx] = ciou.detach()
+        t_conf[batch_idx, grid_idx, anchor_idx] = ciou
         p_conf = preds[..., 0]
         conf_loss = self.conf_lossfn(p_conf, t_conf)
         pos_conf = p_conf[batch_idx, grid_idx, anchor_idx].sigmoid()

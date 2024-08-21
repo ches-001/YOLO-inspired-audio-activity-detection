@@ -66,8 +66,8 @@ train_config:
     class_w: 0.4
     conf_w: 1.0
     edge_t: 0.5
-    alpha: null
-    gamma: null
+    alpha: 0.25
+    gamma: 1.50
     label_smoothing: 0.08
     multi_label: true
 
