@@ -60,7 +60,7 @@ train_config:
   epochs: 1000
 
   loss_config:
-    anchor_t: 3.44
+    anchor_t: 1.44
     batch_scale_loss: false
     box_w: 0.3
     class_w: 0.3
