@@ -62,7 +62,7 @@ train_config:
   loss_config:
     anchor_t: 2.0
     batch_scale_loss: false
-    box_w: 0.1
+    box_w: 0.3
     class_w: 0.4
     conf_w: 5.0
     edge_t: 0.5
