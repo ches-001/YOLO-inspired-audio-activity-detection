@@ -56,8 +56,8 @@ def get_annotation_label_map(annotations_path: str) -> Dict[int, str]:
 
 def process_model_outputs(
         outputs: torch.Tensor,
-        iou_threshold: float=0.1,
-        conf_threshold: float=0.65,
+        iou_threshold: float=0.05,
+        conf_threshold: float=0.5,
         sample_duration: float=60,
         return_start_end: bool=True,
         _h: int=10,
@@ -250,8 +250,8 @@ if __name__ == "__main__":
     extension = "wav"
     output_dir = "model_predictions"
     num_concurrency = 10
-    iou_threshold = 0.1
-    conf_threshold = 0.65
+    iou_threshold = 0.05
+    conf_threshold = 0.5
 
     parser = argparse.ArgumentParser(description=f"Audio model inference")
 
