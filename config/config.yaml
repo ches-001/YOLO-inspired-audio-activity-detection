@@ -64,7 +64,7 @@ train_config:
     batch_scale_loss: false
     box_w: 0.1
     class_w: 0.3
-    conf_w: 1.0
+    conf_w: 1.3
     edge_t: 0.5
     alpha: 0.25
     gamma: 1.5
