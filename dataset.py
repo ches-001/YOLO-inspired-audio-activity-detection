@@ -83,7 +83,6 @@ class AudioDataset(Dataset):
         self.ignore_index = ignore_index
         audio_filenames = [i.replace(f".{extension}", "") for i in os.listdir(self.audios_path)]
         annotations = {k:v for k, v in annotations.items() if k in audio_filenames}
-        audio_filenames = [filename for filename in audio_filenames if filename in annotations.keys()]
 
         if not AudioDataset.is_grouped_annotations(annotations):
             self._samples, self.class2idx, self.class_counts = self._index_samples(annotations)
