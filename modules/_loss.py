@@ -92,7 +92,7 @@ class AudioDetectionLoss(nn.Module):
         (lg_lbox, lg_lconf, lg_lcls), lg_metrics_dict = self.loss_fn(lg_preds, targets, anchors=self.anchors_dict["lg"])
 
         lbox = sm_lbox + md_lbox + lg_lbox
-        lconf = (sm_lconf * 4.0) + (md_lconf * 1) + (lg_lconf * 0.6)
+        lconf = (sm_lconf * 4.0) + (md_lconf * 2.0) + (lg_lconf * 1.0)
         lcls = sm_lcls + md_lcls + lg_lcls
 
         _b = preds[-1].shape[0] if self.batch_scale_loss else 1.0
