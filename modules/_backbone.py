@@ -139,7 +139,7 @@ class ResNetBackBone(ResNet):
         #delete unwanted layers
         del self.maxpool, self.fc, self.avgpool
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.bn1(x)
