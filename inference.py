@@ -114,7 +114,7 @@ def evaluate_audio(
         model: AudioDetectionNetwork, 
         audio_filepath: str, 
         output_dir: str,
-        model_sample_rate: int, 
+        input_sample_rate: int, 
         sample_duration: float, 
         batch_size: int,
         idx2class_map: Dict[int, str],
@@ -137,12 +137,6 @@ def evaluate_audio(
         )
         if batch_audio_tensor.shape[-1] == 0: break
 
-        # reassign audio resampler to accomodate for sample frequencies that are different from the default 22050
-        model.resampler = torchaudio.transforms.Resample(
-            orig_freq=og_sample_rate, 
-            new_freq=model_sample_rate
-        )
-        model.to(device)
         batch_audio_tensor = batch_audio_tensor.squeeze(0)
 
         if batch_audio_tensor.ndim == 2 and batch_audio_tensor.shape[0] > 1:
@@ -159,7 +153,15 @@ def evaluate_audio(
         batch_audio_tensor = batch_audio_tensor.to(device)
 
         with torch.no_grad():
-            output: torch.Tensor = model(batch_audio_tensor.to(device), combine_scales=True)
+            if og_sample_rate != input_sample_rate:
+                resampler = torchaudio.transforms.Resample(
+                    orig_freq=og_sample_rate, 
+                    new_freq=input_sample_rate
+                )
+                resampler.to(device)
+                batch_audio_tensor = batch_audio_tensor.to(device)
+                batch_audio_tensor = resampler(batch_audio_tensor)
+            output: torch.Tensor = model(batch_audio_tensor, combine_scales=True)
         num_class_outputs =  output.shape[-1] - 3
 
         if num_class_outputs not in [2, 3, 6]:
@@ -232,7 +234,7 @@ async def evaluate_dir(
 
 if __name__ == "__main__": 
     config = load_config()
-    model_sample_rate = config["new_sample_rate"]
+    input_sample_rate = config["sample_rate"]
     sample_duration = config["sample_duration"]
     batch_size = config["train_config"]["batch_size"]
     class_map_path = os.path.join(config["train_config"]["class_map_path"], "ivy-openbmat", "class_map.json")
@@ -306,7 +308,7 @@ if __name__ == "__main__":
     model = AudioDetectionNetwork(num_classes, config=config)
     load_model_weights(model, model_path=args.model_path, device=args.device)
     kwargs = dict(
-        model_sample_rate=model_sample_rate, 
+        input_sample_rate=input_sample_rate, 
         sample_duration=sample_duration, 
         batch_size=args.batch_size, 
         idx2class_map=idx2class_map,
