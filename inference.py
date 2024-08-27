@@ -35,6 +35,7 @@ def get_label_map(label_map_path: str) -> Dict[int, str]:
     with open(label_map_path, "r") as f:
         map_dict = json.load(f)
     f.close()
+    map_dict = {int(k):v for k, v in map_dict.items()}
     return map_dict
 
 
@@ -192,7 +193,10 @@ def evaluate_audio(
 
     _path_split = audio_filepath.split((os.sep if os.sep in audio_filepath else "/"))
     filename = "".join(_path_split[-1].split(".")[:-1])
-    output_dir = os.path.join(output, _path_split[-2])
+    output_dir = os.path.join(output_dir, _path_split[-3])
+
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
     df = pd.DataFrame(rle_results)
     df.to_csv(os.path.join(output_dir, f"{filename}_results.csv"), index=False)
 
