@@ -13,7 +13,7 @@ anchors:
   - 12.867792792792798
 
 backbone: custom
-block_layers: [1, 1, 1, 1]
+block_layers: [2, 2, 2, 2]
 resnet_config:
   block: BasicBlock
 dropout: 0.2

@@ -8,3 +8,4 @@ saved_model
 **/__pycache__
 kaggle.json
 notebook.ipynb
+idx2class_mapping

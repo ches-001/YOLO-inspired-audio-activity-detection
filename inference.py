@@ -246,8 +246,8 @@ if __name__ == "__main__":
     extension = "wav"
     output_dir = "model_predictions"
     num_concurrency = 10
-    iou_threshold = 0.05
-    conf_threshold = 0.3
+    iou_threshold = 0.1
+    conf_threshold = 0.2
 
     parser = argparse.ArgumentParser(description=f"Audio model inference")
     parser.add_argument("--model_path", default=model_path, type=str, metavar="", 
