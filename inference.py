@@ -136,11 +136,13 @@ def evaluate_audio(
             backend="soundfile"
         )
         if batch_audio_tensor.shape[-1] == 0: break
-        if og_sample_rate != model_sample_rate:
-            model.resampler = torchaudio.transforms.Resample(
-                orig_freq=og_sample_rate, 
-                new_freq=model_sample_rate
-            )
+
+        # reassign audio resampler to accomodate for sample frequencies that are different from the default 22050
+        model.resampler = torchaudio.transforms.Resample(
+            orig_freq=og_sample_rate, 
+            new_freq=model_sample_rate
+        )
+        model.to(device)
         batch_audio_tensor = batch_audio_tensor.squeeze(0)
 
         if batch_audio_tensor.ndim == 2 and batch_audio_tensor.shape[0] > 1:
@@ -157,7 +159,7 @@ def evaluate_audio(
         batch_audio_tensor = batch_audio_tensor.to(device)
 
         with torch.no_grad():
-            output: torch.Tensor = model.forward(batch_audio_tensor.to(device), combine_scales=True)
+            output: torch.Tensor = model(batch_audio_tensor.to(device), combine_scales=True)
         num_class_outputs =  output.shape[-1] - 3
 
         if num_class_outputs not in [2, 3, 6]:
