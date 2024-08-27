@@ -19,9 +19,6 @@ from typing import *
 warnings.filterwarnings(action="ignore")
 logger = logging.getLogger(__name__)
 
-ANNOTATIONS_DIR = "dataset/annotations"
-SAVED_MODEL_DIR = "saved_model"
-
 
 def load_model_weights(model: AudioDetectionNetwork, model_path: str, device: str="cpu"):
     if not os.path.isfile(model_path):
@@ -34,24 +31,11 @@ def load_model_weights(model: AudioDetectionNetwork, model_path: str, device: st
     model.eval()
 
 
-def get_annotation_label_map(annotations_path: str) -> Dict[int, str]:
-    with open(annotations_path, "r") as f:
-        annotations_dict = json.load(f)
+def get_label_map(label_map_path: str) -> Dict[int, str]:
+    with open(label_map_path, "r") as f:
+        map_dict = json.load(f)
     f.close()
-    annotations = annotations_dict["annotations"]
-    annotations = annotations[list(annotations.keys())[0]]
-
-    unique_classes = []
-    for filename in tqdm.tqdm(annotations.keys()):
-        annotation = annotations[filename]
-        segment_keys = sorted(list(annotation.keys()))
-        for key in segment_keys:
-            _class = annotation[key]["class"]
-            if _class not in unique_classes:
-                unique_classes.append(_class)
-    unique_classes = sorted(unique_classes)
-    label_map = {i:label for i, label in enumerate(unique_classes)}
-    return label_map
+    return map_dict
 
 
 def process_model_outputs(
@@ -132,7 +116,7 @@ def evaluate_audio(
         model_sample_rate: int, 
         sample_duration: float, 
         batch_size: int,
-        id2label_map: Dict[int, str],
+        idx2class_map: Dict[int, str],
         device: str="cpu",
         iou_threshold: float=0.1, 
         conf_threshold: float=0.65,
@@ -201,12 +185,14 @@ def evaluate_audio(
         start = timedelta(seconds=_segment[-2].item())
         end = timedelta(seconds=_segment[-1].item())
         class_idx = int(_segment[2].item())
-        if len(rle_results) == 0 or rle_results[-1]["class"] != id2label_map[class_idx]:
-            rle_results.append({"start": start, "end": end, "class": id2label_map[class_idx]})
+        if len(rle_results) == 0 or rle_results[-1]["class"] != idx2class_map[class_idx]:
+            rle_results.append({"start": start, "end": end, "class": idx2class_map[class_idx]})
             continue
         rle_results[-1]["end"] = end
 
-    filename = "".join(audio_filepath.split((os.sep if os.sep in audio_filepath else "/"))[-1].split(".")[:-1])
+    _path_split = audio_filepath.split((os.sep if os.sep in audio_filepath else "/"))
+    filename = "".join(_path_split[-1].split(".")[:-1])
+    output_dir = os.path.join(output, _path_split[-2])
     df = pd.DataFrame(rle_results)
     df.to_csv(os.path.join(output_dir, f"{filename}_results.csv"), index=False)
 
@@ -240,21 +226,32 @@ async def evaluate_dir(
 
 if __name__ == "__main__": 
     config = load_config()
-
     model_sample_rate = config["new_sample_rate"]
     sample_duration = config["sample_duration"]
     batch_size = config["train_config"]["batch_size"]
+    class_map_path = os.path.join(config["train_config"]["class_map_path"], "ivy-openbmat", "class_map.json")
+    block_config = "_".join(map(lambda i : str(i), config["block_layers"]))
+    model_path = os.path.join(
+        config["train_config"]["model_path"], 
+        "ivy-openbmat", 
+        f"{config['backbone']}_{block_config}",
+        f"{AudioDetectionNetwork.__name__}.pth.tar"
+    )
     device = config["train_config"]["device"] if torch.cuda.is_available() else "cpu"
-    model_path = f"resnet_BasicBlock_3_4_6_3/MD_mapping/{AudioDetectionNetwork.__name__}.pth.tar"
-    audio_dir = "dataset/eval"
+    audio_dir = os.path.join("dataset", "openbmat", "eval")
     extension = "wav"
     output_dir = "model_predictions"
     num_concurrency = 10
     iou_threshold = 0.05
-    conf_threshold = 0.5
+    conf_threshold = 0.3
 
     parser = argparse.ArgumentParser(description=f"Audio model inference")
-
+    parser.add_argument("--model_path", default=model_path, type=str, metavar="", 
+        help=f"Path to pretrained model weights (default={model_path})"
+    )
+    parser.add_argument("--class_map_path", default=class_map_path, type=str, metavar="", 
+        help=f"Path to specific class map (default={class_map_path})"
+    )
     parser.add_argument(
         "--batch_size", type=int, default=batch_size, metavar="", 
         help=f"number of segments batch to process at a time for a given audio file (default = {batch_size})"
@@ -279,9 +276,6 @@ if __name__ == "__main__":
         "--output_dir", type=str, default=output_dir, metavar="", 
         help=f"directory to store JSON model predictions (default = {output_dir})"
     )
-    parser.add_argument("--model_path", type=str, default=model_path, metavar="", 
-        help=f"Path to pretrained model weights (default = {model_path})"
-    )
     parser.add_argument(
         "--num_concurrency", type=int, default=num_concurrency, metavar="", 
         help=f"Number of files to process at a time (default = {num_concurrency})"
@@ -297,24 +291,19 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    audio_dir = args.audio_dir
-    _split = args.model_path.split("/")
-    annotation_filename = _split[-2]
-    subdir = _split[0]
-    annotations_path = os.path.join(ANNOTATIONS_DIR, f"{annotation_filename}.json")
-    if not os.path.isfile(annotations_path):
-        raise FileNotFoundError(f"{annotation_filename}.json file does not exist in {ANNOTATIONS_DIR}")
-    id2label_map = get_annotation_label_map(annotations_path)
-    num_classes = len(id2label_map)
+    
+    if not os.path.isfile(args.class_map_path):
+        raise FileNotFoundError(f"{args.class_map_path} file does not exist in {args.class_map_path}")
+    idx2class_map = get_label_map(args.class_map_path)
+    num_classes = len(idx2class_map)
 
     model = AudioDetectionNetwork(num_classes, config=config)
-    load_model_weights(model, model_path=os.path.join(SAVED_MODEL_DIR, args.model_path), device=args.device)
-    output_dir = os.path.join(args.output_dir, subdir, annotation_filename)
+    load_model_weights(model, model_path=args.model_path, device=args.device)
     kwargs = dict(
         model_sample_rate=model_sample_rate, 
         sample_duration=sample_duration, 
         batch_size=args.batch_size, 
-        id2label_map=id2label_map,
+        idx2class_map=idx2class_map,
         device=args.device,
         iou_threshold=args.iou_threshold,
         conf_threshold=args.conf_threshold
@@ -322,11 +311,11 @@ if __name__ == "__main__":
     if args.audio_filepath:
         if not os.path.isfile(args.audio_filepath):
             raise FileNotFoundError(f"{args.audio_file} not found")
-        if not os.path.isdir(output_dir):
-            os.makedirs(output_dir)
-        reesult = evaluate_audio(model, args.audio_filepath, output_dir, **kwargs)
+        if not os.path.isdir(args.output_dir):
+            os.makedirs(args.output_dir)
+        reesult = evaluate_audio(model, args.audio_filepath, args.output_dir, **kwargs)
     else:
-        if not os.path.isdir(audio_dir):
-            raise OSError(f"directory {audio_dir} not found")
+        if not os.path.isdir(args.audio_dir):
+            raise OSError(f"directory {args.audio_dir} not found")
         extension = extension.replace(".", "")
-        asyncio.run(evaluate_dir(model, audio_dir, output_dir, args.extension, args.num_concurrency, **kwargs))
+        asyncio.run(evaluate_dir(model, args.audio_dir, args.output_dir, args.extension, args.num_concurrency, **kwargs))

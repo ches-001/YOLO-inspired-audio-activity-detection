@@ -107,14 +107,12 @@ def run(config: Dict[str, Any]):
         eval_data_path = os.path.join(data_path, "eval")
         annotations = load_annotations(data_path, annotator)
         dataset_name = data_path.split("/")[-1]
-        model_path = os.path.join(config["train_config"]["model_path"], dataset_name)
-        metrics_path = os.path.join(config["train_config"]["metrics_path"], dataset_name)
         train_dataset = make_dataset(train_data_path, annotations, config)
         eval_dataset = make_dataset(eval_data_path, annotations, config)
 
     elif data_path.endswith("*") or len(split_data_paths) > 1:
         annotations_list, train_data_paths, eval_data_paths = [], [], []
-        dataset_name = ""
+        _dnames = []
         if len(split_data_paths) > 1:
             data_paths = split_data_paths
         else:
@@ -125,17 +123,18 @@ def run(config: Dict[str, Any]):
             annotations_list.append(load_annotations(path, annotator))
             train_data_paths.append(os.path.join(path, "train"))
             eval_data_paths.append(os.path.join(path, "eval"))
-            dataset_name += path.split("/")[-1]
-            if i != len(data_paths) - 1:
-                dataset_name += "-"
+            _dnames.append(path.split(os.sep)[-1])
+        dataset_name = "-".join(sorted(_dnames))
         train_dataset = make_dataset(train_data_paths, annotations_list, config)
         eval_dataset = make_dataset(eval_data_paths, annotations_list, config)
-        model_path = os.path.join(config["train_config"]["model_path"], dataset_name)
-        metrics_path = os.path.join(config["train_config"]["metrics_path"], dataset_name)
 
     else:
         raise Exception(f"Invalid data path {data_path}")
-
+    
+    model_path = os.path.join(config["train_config"]["model_path"], dataset_name)
+    metrics_path = os.path.join(config["train_config"]["metrics_path"], dataset_name)
+    class_map_path = os.path.join(config["train_config"]["class_map_path"], dataset_name)
+    AudioDataset.save_label_map(train_dataset.class2idx, class_map_path)
     train_dataloader = make_dataloader(train_dataset, config)
     eval_dataloader = make_dataloader(eval_dataset, config)
 

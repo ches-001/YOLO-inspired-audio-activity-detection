@@ -1,4 +1,5 @@
 import os
+import json
 import tqdm
 import logging
 import torch
@@ -252,6 +253,16 @@ class AudioDataset(Dataset):
         class2idx = {label:i for i, label in enumerate(unique_classes)}
         class_counts = {k:class_counts[k] for k in unique_classes}
         return _samples, class2idx, class_counts
+    
+
+    @staticmethod
+    def save_label_map(class2idx_map: Dict[str, int], _dir: str):
+        if not os.path.isdir(_dir):
+            os.makedirs(_dir)
+        idx2class_map = {v:k for k, v in class2idx_map.items()}
+        with open(os.path.join(_dir, "class_map.json"), "w") as f:
+            json.dump(idx2class_map, f)
+        f.close()
 
 
     @staticmethod    

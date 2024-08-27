@@ -54,20 +54,21 @@ audio_extension: wav
 
 train_config:
   dataset_path: dataset/*
+  class_map_path: "idx2class_mapping"
   annotator: annotator_a
   batch_size: 32
   device: cuda
   epochs: 600
 
   loss_config:
-    anchor_t: 1.5
+    anchor_t: 3.44
     batch_scale_loss: false
     box_w: 0.1
     class_w: 0.3
-    conf_w: 6.0
+    conf_w: 1.0
     edge_t: 0.5
-    alpha: 0.25
-    gamma: 1.5
+    alpha: null
+    gamma: null
     label_smoothing: 0.08
     multi_label: true
 
