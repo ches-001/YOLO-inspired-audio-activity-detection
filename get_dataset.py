@@ -28,13 +28,14 @@ def convert_audio(audiofile: str, dest_ext: str="wav", target_sample_rate: int=2
         audio_tensor = torchaudio.functional.resample(
             audio_tensor, sample_rate, target_sample_rate
         ).cpu()
+
+    os.remove(audiofile)
+    
     torchaudio.save(
         audiofile.replace(f".{file_ext}", f".{dest_ext}"), 
-        src=audio_tensor, 
-        sample_rate=sample_rate
+        src=audio_tensor,
+        sample_rate=target_sample_rate
     )
-    if file_ext != dest_ext:
-        os.remove(audiofile)
 
 async def format_audio_coro(
         audiofile: str, 

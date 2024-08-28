@@ -143,7 +143,7 @@ def evaluate_audio(
             batch_audio_tensor = batch_audio_tensor[0].squeeze(0)
 
         nbatch = batch_size
-        if batch_audio_tensor.shape[0] % sample_duration != 0:
+        if batch_audio_tensor.shape[0] % sample_size != 0:
             nbatch = np.ceil(batch_audio_tensor.shape[0] / sample_size).astype(int)
             pad_size =  (nbatch * sample_size) - batch_audio_tensor.shape[0]
             _zeros = torch.zeros((pad_size, ), dtype=batch_audio_tensor.dtype)
@@ -164,8 +164,8 @@ def evaluate_audio(
             output: torch.Tensor = model(batch_audio_tensor, combine_scales=True)
         num_class_outputs =  output.shape[-1] - 3
 
-        if num_class_outputs not in [2, 3, 6]:
-            raise RuntimeError(f"model output is expected to be 2, 3 or 6, got {output.shape[-1]}")
+        if num_class_outputs >= len(idx2class_map):
+            raise RuntimeError(f"model output does not match idx2class mapping")
         segments, batch_idxs = process_model_outputs(
             output, 
             iou_threshold=iou_threshold, 
