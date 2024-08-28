@@ -238,12 +238,22 @@ if __name__ == "__main__":
     batch_size = config["train_config"]["batch_size"]
     class_map_path = os.path.join(config["train_config"]["class_map_path"], "ivy-openbmat", "class_map.json")
     block_config = "_".join(map(lambda i : str(i), config["block_layers"]))
-    model_path = os.path.join(
-        config["train_config"]["model_path"], 
-        "ivy-openbmat", 
-        f"{config['backbone']}_{block_config}",
-        f"{AudioDetectionNetwork.__name__}.pth.tar"
-    )
+    if config["backbone"] == "custom":
+        model_path = os.path.join(
+            config["train_config"]["model_path"], 
+            "ivy-openbmat", 
+            f"{config['backbone']}_{block_config}",
+            f"{AudioDetectionNetwork.__name__}.pth.tar"
+        )
+    elif config['backbone'] == "resnet":
+        model_path = os.path.join(
+            config["train_config"]["model_path"], 
+            "ivy-openbmat", 
+            f"{config['backbone']}_{config['resnet_config']['block']}_{block_config}",
+            f"{AudioDetectionNetwork.__name__}.pth.tar"
+        )
+    else:
+        raise Exception("Invalid backbone")
     device = config["train_config"]["device"] if torch.cuda.is_available() else "cpu"
     audio_dir = os.path.join("dataset", "openbmat", "eval")
     extension = "wav"
