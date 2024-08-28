@@ -163,7 +163,7 @@ def evaluate_audio(
             output: torch.Tensor = model(batch_audio_tensor, combine_scales=True)
         num_class_outputs =  output.shape[-1] - 3
 
-        if num_class_outputs >= len(idx2class_map):
+        if num_class_outputs > len(idx2class_map):
             raise RuntimeError(f"model output does not match idx2class mapping")
         segments, batch_idxs = process_model_outputs(
             output, 
