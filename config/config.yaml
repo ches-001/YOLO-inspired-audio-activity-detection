@@ -43,7 +43,7 @@ mfcc_config:
   n_mfcc: 32
 
 num_anchors: 3
-train_anchors: false
+train_anchors: true
 sample_duration: 60
 sample_rate: 22050
 new_sample_rate: 16000
