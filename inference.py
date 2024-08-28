@@ -138,9 +138,8 @@ def evaluate_audio(
         if batch_audio_tensor.shape[-1] == 0: break
 
         batch_audio_tensor = batch_audio_tensor.squeeze(0)
-
         if batch_audio_tensor.ndim == 2 and batch_audio_tensor.shape[0] > 1:
-            batch_audio_tensor = batch_audio_tensor[0].squeeze(0)
+            batch_audio_tensor = batch_audio_tensor.mean(dim=0).unsqueeze(0)
 
         nbatch = batch_size
         if batch_audio_tensor.shape[0] % sample_size != 0:

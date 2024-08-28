@@ -36,10 +36,20 @@ class AudioDetectionNetwork(nn.Module):
             **self.config["mfcc_config"]
         )
         self.register_buffer("taper_window", torch.empty(0), persistent=True)
-        train_anchors = self.config["train_anchors"]
-        self.sm_anchors = nn.Parameter(torch.FloatTensor(self.config["anchors"]["sm"]), requires_grad=train_anchors)
-        self.md_anchors = nn.Parameter(torch.FloatTensor(self.config["anchors"]["md"]), requires_grad=train_anchors)
-        self.lg_anchors = nn.Parameter(torch.FloatTensor(self.config["anchors"]["lg"]), requires_grad=train_anchors)
+        _train_anchors = self.config["train_anchors"]
+        _sample_duration = self.config["sample_duration"]
+        self.sm_anchors = nn.Parameter(
+            torch.FloatTensor(self.config["anchors"]["sm"]) / _sample_duration, 
+            requires_grad=_train_anchors
+        )
+        self.md_anchors = nn.Parameter(
+            torch.FloatTensor(self.config["anchors"]["md"]) / _sample_duration, 
+            requires_grad=_train_anchors
+        )
+        self.lg_anchors = nn.Parameter(
+            torch.FloatTensor(self.config["anchors"]["lg"]) / _sample_duration, 
+            requires_grad=_train_anchors
+        )
 
         if self.config["backbone"] == "custom":
             self.feature_extractor = CustomBackBone(
@@ -100,9 +110,15 @@ class AudioDetectionNetwork(nn.Module):
         sm_scale, md_scale, lg_scale = self.multiscale_module(*fmaps)
 
         # process predictions at different scales
-        sm_preds = self.get_scale_pred(sm_scale, self.sm_anchors, input_size=x.shape[-1], spectral_size=x_spectral.shape[-1])
-        md_preds = self.get_scale_pred(md_scale, self.md_anchors, input_size=x.shape[-1], spectral_size=x_spectral.shape[-1])
-        lg_preds = self.get_scale_pred(lg_scale, self.lg_anchors, input_size=x.shape[-1], spectral_size=x_spectral.shape[-1])
+        sm_preds = self.get_scale_pred(
+            sm_scale, self.sm_anchors*self.config["sample_duration"], input_size=x.shape[-1], spectral_size=x_spectral.shape[-1]
+        )
+        md_preds = self.get_scale_pred(
+            md_scale, self.md_anchors*self.config["sample_duration"], input_size=x.shape[-1], spectral_size=x_spectral.shape[-1]
+        )
+        lg_preds = self.get_scale_pred(
+            lg_scale, self.lg_anchors*self.config["sample_duration"], input_size=x.shape[-1], spectral_size=x_spectral.shape[-1]
+        )
 
         if not combine_scales:
             return sm_preds, md_preds, lg_preds
