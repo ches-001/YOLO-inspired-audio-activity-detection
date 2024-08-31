@@ -12,11 +12,11 @@ anchors:
   - 7.44449691991786
   - 12.867792792792798
 
-backbone: custom
-block_layers: [1, 1, 1, 1]
+backbone: resnet
+block_layers: [2, 2, 2, 2]
 resnet_config:
   block: BasicBlock
-dropout: 0.2
+dropout: 0.4
 
 melspectrogram_config:
   center: false
@@ -58,10 +58,10 @@ train_config:
   annotator: annotator_a
   batch_size: 32
   device: cuda
-  epochs: 600
+  epochs: 200
 
   loss_config:
-    anchor_t: 3.44
+    anchor_t: 5
     batch_scale_loss: false
     box_w: 0.1
     class_w: 0.3
@@ -80,9 +80,9 @@ train_config:
     weight_decay: 0.002
 
   lr_scheduler_config:
-    T_0: 600
+    T_0: 200
     T_mult: 1
-    eta_min: 5.0e-07
+    eta_min: 1.0e-06
     name: CosineAnnealingWarmRestarts
 
   ema_config:
