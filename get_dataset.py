@@ -153,7 +153,10 @@ if __name__ == "__main__":
         valid_dirs = ["train", "eval", "annotations"]
         for d in os.listdir(dataset_dir):
             if d not in valid_dirs:
-                shutil.rmtree(os.path.join(dataset_dir, d))
+                p = os.path.join(dataset_dir, d)
+                if os.path.isdir(p): shutil.rmtree(p)
+                elif os.path.isfile(p): os.remove(p)
+                else: pass
 
     asyncio.run(
         format_and_resample(
