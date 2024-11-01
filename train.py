@@ -133,7 +133,7 @@ def run(config: Dict[str, Any]):
     
     model_path = os.path.join(config["train_config"]["model_path"], dataset_name)
     metrics_path = os.path.join(config["train_config"]["metrics_path"], dataset_name)
-    class_map_path = os.path.join(config["train_config"]["class_map_path"], dataset_name)
+    class_map_path = config["train_config"]["class_map_path"]
     AudioDataset.save_label_map(train_dataset.class2idx, class_map_path)
     train_dataloader = make_dataloader(train_dataset, config)
     eval_dataloader = make_dataloader(eval_dataset, config)

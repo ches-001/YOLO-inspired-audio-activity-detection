@@ -121,7 +121,7 @@ def evaluate_audio(
         device: str="cpu",
         iou_threshold: float=0.1, 
         conf_threshold: float=0.65,
-    ) -> Dict[str, Dict[str, Dict[str, Union[float, str]]]]:
+    ):
 
     batch_start = 0
     batch_end = batch_size * sample_duration
@@ -186,8 +186,8 @@ def evaluate_audio(
     rle_results = []
     for i in range(0, segments.shape[0]):
         _segment = segments[i]
-        start = timedelta(seconds=_segment[-2].item())
-        end = timedelta(seconds=_segment[-1].item())
+        start = timedelta(seconds=round(_segment[-2].item(), 2))
+        end = timedelta(seconds=round(_segment[-1].item(), 2))
         class_idx = int(_segment[2].item())
         if len(rle_results) == 0 or rle_results[-1]["class"] != idx2class_map[class_idx]:
             rle_results.append({"start": start, "end": end, "class": idx2class_map[class_idx]})
@@ -236,7 +236,7 @@ if __name__ == "__main__":
     input_sample_rate = config["sample_rate"]
     sample_duration = config["sample_duration"]
     batch_size = config["train_config"]["batch_size"]
-    class_map_path = os.path.join(config["train_config"]["class_map_path"], "ivy-openbmat", "class_map.json")
+    class_map_path = os.path.join(config["train_config"]["class_map_path"], "class_map.json")
     block_config = "_".join(map(lambda i : str(i), config["block_layers"]))
     if config["backbone"] == "custom":
         model_path = os.path.join(
@@ -263,9 +263,6 @@ if __name__ == "__main__":
     conf_threshold = 0.2
 
     parser = argparse.ArgumentParser(description=f"Audio model inference")
-    parser.add_argument("--model_path", default=model_path, type=str, metavar="", 
-        help=f"Path to pretrained model weights (default={model_path})"
-    )
     parser.add_argument("--class_map_path", default=class_map_path, type=str, metavar="", 
         help=f"Path to specific class map (default={class_map_path})"
     )
@@ -315,7 +312,7 @@ if __name__ == "__main__":
     num_classes = len(idx2class_map)
 
     model = AudioDetectionNetwork(num_classes, config=config)
-    load_model_weights(model, model_path=args.model_path, device=args.device)
+    load_model_weights(model, model_path=model_path, device=args.device)
     kwargs = dict(
         input_sample_rate=input_sample_rate, 
         sample_duration=sample_duration, 
@@ -330,9 +327,9 @@ if __name__ == "__main__":
             raise FileNotFoundError(f"{args.audio_file} not found")
         if not os.path.isdir(args.output_dir):
             os.makedirs(args.output_dir)
-        reesult = evaluate_audio(model, args.audio_filepath, args.output_dir, **kwargs)
+        result = evaluate_audio(model, args.audio_filepath, args.output_dir, **kwargs)
     else:
         if not os.path.isdir(args.audio_dir):
             raise OSError(f"directory {args.audio_dir} not found")
         extension = extension.replace(".", "")
-        asyncio.run(evaluate_dir(model, args.audio_dir, args.output_dir, args.extension, args.num_concurrency, **kwargs))
+        asyncio.run(evaluate_dir(model, args.audio_dir, args.output_dir, extension, args.num_concurrency, **kwargs))

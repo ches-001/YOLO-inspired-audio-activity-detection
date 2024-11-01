@@ -255,7 +255,7 @@ class MultiScaleFmapModule(nn.Module):
         p2 = self.rep_block2_1(self.bic2(fmap2, fmap1, p3))
         n2 = self.identity(p2)
         n3 = self.rep_block3_2(torch.cat((p3, self.conv2_downsample(n2)), dim=1))
-        n4 = self.rep_block3_2(torch.cat((p4, self.conv3_downsample(n3)), dim=1))
+        n4 = self.rep_block4_1(torch.cat((p4, self.conv3_downsample(n3)), dim=1))
         n2 = nn.functional.adaptive_avg_pool2d(n2, output_size=(1, n2.shape[-1]))
         n3 = nn.functional.adaptive_avg_pool2d(n3, output_size=(1, n3.shape[-1]))
         n4 = nn.functional.adaptive_avg_pool2d(n4, output_size=(1, n4.shape[-1]))

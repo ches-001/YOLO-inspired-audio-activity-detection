@@ -274,7 +274,7 @@ class AudioDataset(Dataset):
 
 
     @staticmethod
-    def collate_fn(batch: Tuple[torch.Tensor, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    def collate_fn(batch: List[Tuple[torch.Tensor, torch.Tensor]]) -> Tuple[torch.Tensor, torch.Tensor]:
         audio_signals, targets = zip(*batch)
         for i, target in enumerate(targets):
             target[:, 0] = i
