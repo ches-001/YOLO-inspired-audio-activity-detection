@@ -131,8 +131,8 @@ def run(config: Dict[str, Any]):
     else:
         raise Exception(f"Invalid data path {data_path}")
     
-    model_path = os.path.join(config["train_config"]["model_path"], dataset_name)
-    metrics_path = os.path.join(config["train_config"]["metrics_path"], dataset_name)
+    model_path = config["train_config"]["model_path"]
+    metrics_path = config["train_config"]["metrics_path"]
     class_map_path = config["train_config"]["class_map_path"]
     AudioDataset.save_label_map(train_dataset.class2idx, class_map_path)
     train_dataloader = make_dataloader(train_dataset, config)
@@ -150,13 +150,6 @@ def run(config: Dict[str, Any]):
     backbone = config["backbone"]
     block_layers = config["block_layers"]
     blocks_str = "_".join(map(lambda x : str(x), block_layers))
-    if backbone == "custom":
-        model_path = os.path.join(model_path, f"{backbone}_{blocks_str}")
-        metrics_path = os.path.join(metrics_path, f"{backbone}_{blocks_str}")
-    elif backbone == "resnet":
-        block = config["resnet_config"]["block"]
-        model_path = os.path.join(model_path, f"{backbone}_{block}_{blocks_str}")
-        metrics_path = os.path.join(metrics_path, f"{backbone}_{block}_{blocks_str}")
 
     use_ema = config["train_config"]["use_ema"]
     ema_smoothener = None

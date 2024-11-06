@@ -195,8 +195,13 @@ def evaluate_audio(
         rle_results[-1]["end"] = end
 
     _path_split = audio_filepath.split((os.sep if os.sep in audio_filepath else "/"))
+    print(_path_split)
     filename = "".join(_path_split[-1].split(".")[:-1])
-    output_dir = os.path.join(output_dir, _path_split[-3])
+    
+    if len(_path_split) == 2:
+        output_dir = os.path.join(output_dir, _path_split[-2])
+    elif len(_path_split > 2):
+        output_dir = os.path.join(output_dir, _path_split[-3])        
 
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
@@ -238,22 +243,7 @@ if __name__ == "__main__":
     batch_size = config["train_config"]["batch_size"]
     class_map_path = os.path.join(config["train_config"]["class_map_path"], "class_map.json")
     block_config = "_".join(map(lambda i : str(i), config["block_layers"]))
-    if config["backbone"] == "custom":
-        model_path = os.path.join(
-            config["train_config"]["model_path"], 
-            "ivy-openbmat", 
-            f"{config['backbone']}_{block_config}",
-            f"{AudioDetectionNetwork.__name__}.pth.tar"
-        )
-    elif config['backbone'] == "resnet":
-        model_path = os.path.join(
-            config["train_config"]["model_path"], 
-            "ivy-openbmat", 
-            f"{config['backbone']}_{config['resnet_config']['block']}_{block_config}",
-            f"{AudioDetectionNetwork.__name__}.pth.tar"
-        )
-    else:
-        raise Exception("Invalid backbone")
+    model_path = os.path.join(config["train_config"]["model_path"], f"{AudioDetectionNetwork.__name__}.pth.tar")
     device = config["train_config"]["device"] if torch.cuda.is_available() else "cpu"
     audio_dir = os.path.join("dataset", "openbmat", "eval")
     extension = "wav"
@@ -331,5 +321,5 @@ if __name__ == "__main__":
     else:
         if not os.path.isdir(args.audio_dir):
             raise OSError(f"directory {args.audio_dir} not found")
-        extension = extension.replace(".", "")
+        extension = args.extension.replace(".", "")
         asyncio.run(evaluate_dir(model, args.audio_dir, args.output_dir, extension, args.num_concurrency, **kwargs))
